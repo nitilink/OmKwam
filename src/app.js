@@ -21,10 +21,10 @@ const DEFAULT_CASE_INFO = {
   documents: "",
   properNames: "",
 };
-const DEFAULT_DICTIONARY = `-example source term ?????? example normalized term
--????????????????????????????????????????? Dictionary`;
+const DEFAULT_DICTIONARY = `# REDACTED_PUBLIC_SOURCE_PACKAGE
+# Maintainer: restore the private default dictionary before functional deployment.`;
 
-const SUMMARY_RULES_PROMPT = `[REDACTED: proprietary Thai testimony summarization rules are omitted from the public source release.]`;
+const SUMMARY_RULES_PROMPT = `REDACTED_PUBLIC_SOURCE_PACKAGE: restore private summary rules before functional deployment.`;
 
 const DEFAULT_INSTRUCTIONS = "";
 
@@ -81,7 +81,7 @@ const refs = {
   progressAction: "",
   cancelRequested: false,
   stopRequested: false,
-  originalTitle: document.title || "OmKwam 0.34c | NitiLink",
+  originalTitle: document.title || "OmKwam 0.34d | NitiLink",
   titleFlashTimer: null,
   titleFlashOn: false,
   lastTitleAlert: "",
@@ -342,7 +342,27 @@ function getTranscriptIssues() {
 }
 
 function getLocalSummaryIssues() {
-  return [];
+  if (!state.summary) return [];
+  const issues = [];
+  const unusualFoodPattern = /(ผัด\s*(?:กะเพรา|กระเพรา)\s*(?:เนื้อ)?\s*(?:นกฮูก|นกเค้าแมว|สุนัข|หมา|แมว|เสือ|ช้าง|แรด|เต่า|ลิง|งู|จระเข้))/g;
+  let match;
+  while ((match = unusualFoodPattern.exec(state.summary)) !== null) {
+    issues.push({
+      source: "local-summary",
+      index: `local-${issues.length}`,
+      text: match[1],
+      word: {
+        word: match[1],
+        originalWord: match[1],
+        isUnclear: false,
+        isOutofContext: true,
+        issueDescription: "ถ้อยคำนี้ขัดต่อสามัญสำนึกทั่วไปอย่างชัดเจน ควรตรวจทานอีกครั้ง",
+        suggestions: ["ผัดกะเพราไก่", "ผัดกะเพราหมู", "ผัดกะเพราเนื้อ"],
+        contextSuggestions: [],
+      },
+    });
+  }
+  return issues;
 }
 
 function normalizeSummaryIssueEntry(entry, index) {
@@ -912,7 +932,7 @@ async function transcribeRawTextWithGemini(mediaParts, options = {}) {
   const raw = await callGemini([
     ...mediaParts,
     {
-      text: `[REDACTED: proprietary transcription prompt is omitted from the public source release.]`,
+      text: `REDACTED_PUBLIC_SOURCE_PACKAGE: restore the private transcription prompt before functional deployment.`,
     },
   ], "text/plain", options);
   return parseRawTranscriptionText(raw);
@@ -922,7 +942,7 @@ async function rephraseWithGemini(transcriptText = formatTranscript(), options =
   const dictionary = parseDictionaryRules(state.dictionaryText);
   const raw = await callGemini([
     {
-      text: `[REDACTED: proprietary testimony-summary prompt is omitted from the public source release.]`,
+      text: `REDACTED_PUBLIC_SOURCE_PACKAGE: restore the private testimony-summary prompt before functional deployment.`,
     },
   ], "application/json", options);
 
@@ -938,7 +958,7 @@ async function analyzeSummaryIssuesWithGemini(summaryText, options = {}) {
   if (!cleanSummary) return [];
   const raw = await callGemini([
     {
-      text: `[REDACTED: proprietary summary-review prompt is omitted from the public source release.]`,
+      text: `REDACTED_PUBLIC_SOURCE_PACKAGE: restore the private summary-review prompt before functional deployment.`,
     },
   ], "application/json", options);
   const parsed = safeJsonParse(raw);
@@ -1666,6 +1686,9 @@ function renderPrivacyModal() {
         </div>
         <div class="privacy-list">
           <div>
+            <span>OmKwam เป็นโครงการทดลองส่วนตัวของผู้พัฒนาเพื่อศึกษาความเป็นไปได้ในการใช้ AI ช่วยงานถอดเสียงและร่างสรุปคำเบิกความ ไม่ใช่ระบบของหน่วยงานใด และไม่สามารถใช้แทนการตรวจทานของมนุษย์ได้ ผู้ใช้ต้องตรวจสอบ แก้ไข และรับผิดชอบต่อการนำผลลัพธ์ไปใช้เองทุกครั้ง</span>
+          </div>
+          <div>
             <span>แอปพลิเคชันนี้ไม่มีระบบจัดเก็บข้อมูลบนเซิร์ฟเวอร์ (No Backend) และไม่มีการบันทึกข้อมูลใดๆ ของผู้ใช้ โดยทำหน้าที่เป็นเพียงเครื่องมือสำหรับส่งคำขอจากเบราว์เซอร์ของผู้ใช้ไปยัง Gemini โดยตรงผ่าน API Key ที่ผู้ใช้เป็นผู้จัดหาเอง</span>
           </div>
           <div>
@@ -1676,7 +1699,7 @@ function renderPrivacyModal() {
           </div>
           <div>
             <span>เพื่อความโปร่งใส แอปพลิเคชันนี้เปิดเผย source code เพื่อให้ตรวจสอบการทำงาน: <a href="https://github.com/nitilink/OmKwam" target="_blank" rel="noopener noreferrer">github.com/nitilink/OmKwam</a></span>
-            <span class="privacy-meta">Last updated: 24 Jun 2026, 19:32 ICT</span>
+            <span class="privacy-meta">Last updated: 24 Jun 2026, 23:09 ICT</span>
           </div>
         </div>
       </section>
@@ -1974,7 +1997,7 @@ function render() {
         <div class="brand">
           <div class="brand-mark"><img src="./src/assets/nitilink-logo.png" alt="NitiLink logo"></div>
           <div>
-            <h1>OmKwam 0.34c</h1>
+            <h1>OmKwam 0.34d</h1>
             <p>by NitiLink · A privacy-first workspace for testimony transcription</p>
           </div>
         </div>
@@ -2449,3 +2472,5 @@ document.addEventListener("visibilitychange", () => {
 });
 
 render();
+
+
