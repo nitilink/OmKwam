@@ -1,5 +1,6 @@
 ﻿const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_UPLOAD_ENDPOINT = "https://generativelanguage.googleapis.com/upload/v1beta/files";
+const GEMINI_FILES_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/files";
 const DEFAULT_MODEL = "gemini-3.5-flash";
 const MODEL_OPTIONS = [
   { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
@@ -16,6 +17,8 @@ const DICTIONARY_STORAGE_KEY = "omkwam.byok.dictionary.current";
 const CASE_INFO_STORAGE_KEY = "omkwam.byok.caseInfo.2026-06-24-v1";
 const INSTRUCTIONS_STORAGE_KEY = "omkwam.byok.instructions.2026-06-21-v4";
 const INLINE_AUDIO_SAFE_BYTES = 12 * 1024 * 1024;
+const GEMINI_FILE_ACTIVE_TIMEOUT_MS = 90 * 1000;
+const GEMINI_FILE_POLL_INTERVAL_MS = 2000;
 const DEFAULT_CASE_INFO = {
   facts: "",
   documents: "",
@@ -95,7 +98,7 @@ const refs = {
   progressAction: "",
   cancelRequested: false,
   stopRequested: false,
-  originalTitle: document.title || "NitiLink | OmKwam 0.34e",
+  originalTitle: document.title || "NitiLink | OmKwam 0.34h",
   titleFlashTimer: null,
   titleFlashOn: false,
   lastTitleAlert: "",
@@ -901,6 +904,24 @@ function throwIfCancelled(signal = refs.abortController?.signal) {
   if (signal?.aborted) throw makeCancelError();
 }
 
+function wait(ms, signal = refs.abortController?.signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(makeCancelError());
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      window.clearTimeout(timer);
+      reject(makeCancelError());
+    }
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
+
 function makeRequestId(prefix = "omkwam") {
   const randomPart = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${randomPart}`;
@@ -983,6 +1004,51 @@ async function callGemini(parts, responseMimeType, options = {}) {
   return parseGeminiText(payload);
 }
 
+async function getGeminiFileStatus(fileName, options = {}) {
+  const apiKey = state.apiKey.trim();
+  if (!apiKey) throw new Error("กรุณาใส่ Gemini API key ก่อนใช้งาน");
+  const cleanName = String(fileName || "").replace(/^\/+/, "");
+  if (!cleanName) throw new Error("Gemini Files API ไม่ส่ง file name กลับมา");
+  const fileId = cleanName.split("/").pop();
+  const response = await fetch(`${GEMINI_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?key=${encodeURIComponent(apiKey)}`, {
+    method: "GET",
+    cache: "no-store",
+    signal: options.signal,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw makeGeminiError(payload?.error?.message || `Gemini file status error ${response.status}`, response.status, {
+      retryAfter: response.headers.get("retry-after") || "",
+    });
+  }
+  return payload.file || payload;
+}
+
+async function waitForGeminiFileActive(uploaded, options = {}) {
+  if (!uploaded?.name) return uploaded;
+  let current = uploaded;
+  const started = Date.now();
+  while (Date.now() - started < GEMINI_FILE_ACTIVE_TIMEOUT_MS) {
+    throwIfCancelled(options.signal);
+    const fileState = String(current?.state || "").toUpperCase();
+    if (fileState === "ACTIVE") {
+      return {
+        ...uploaded,
+        ...current,
+        uri: current.uri || uploaded.uri,
+        mimeType: current.mimeType || current.mime_type || uploaded.mimeType,
+      };
+    }
+    if (fileState === "FAILED") {
+      throw new Error("Gemini เตรียมไฟล์เสียงไม่สำเร็จ ลองแปลงไฟล์เป็น mp3, m4a หรือ wav แล้วส่งใหม่");
+    }
+    options.onState?.(fileState || "PROCESSING");
+    await wait(GEMINI_FILE_POLL_INTERVAL_MS, options.signal);
+    current = await getGeminiFileStatus(uploaded.name, options);
+  }
+  throw new Error("Gemini ยังเตรียมไฟล์เสียงไม่เสร็จภายในเวลาที่กำหนด ลองกดถอดเสียงใหม่ หรือใช้ไฟล์เสียงขนาดเล็กลง");
+}
+
 async function uploadAudioFileToGemini(file, mimeType, options = {}) {
   const apiKey = state.apiKey.trim();
   if (!apiKey) throw new Error("กรุณาใส่ Gemini API key ก่อนใช้งาน");
@@ -1034,7 +1100,12 @@ async function uploadAudioFileToGemini(file, mimeType, options = {}) {
   }
   const uploaded = payload.file || payload;
   if (!uploaded.uri) throw new Error("Gemini Files API ไม่ส่ง file uri กลับมา");
-  return { uri: uploaded.uri, mimeType: uploaded.mimeType || uploaded.mime_type || mimeType };
+  return {
+    name: uploaded.name || "",
+    uri: uploaded.uri,
+    state: uploaded.state || "",
+    mimeType: uploaded.mimeType || uploaded.mime_type || mimeType,
+  };
 }
 
 function buildTranscriptionMediaParts({ audioBase64 = "", mimeType = "", fileUri = "", fileMimeType = "" }) {
@@ -1296,16 +1367,18 @@ function stopProgressHeartbeat() {
 
 function updateProgressMessage() {
   if (!refs.progressTimer || !state.busy) return;
-  const elapsed = Math.max(1, Math.round((Date.now() - refs.progressStartedAt) / 1000));
   const action = refs.progressAction || (state.busy === "summarizing" ? "กำลังสรุปความ" : "กำลังถอดไฟล์เสียง");
-  let prefix = `ส่งคำขอไปยัง Gemini แล้ว ${elapsed} วินาที`;
-  if (elapsed >= 180) {
-    prefix = `ยังรอผลตอบกลับจาก Gemini อยู่ ${elapsed} วินาที อาจค้างหรือโมเดลหนาแน่น`;
-  } else if (elapsed >= 120) {
-    prefix = `ยังรอผลตอบกลับจาก Gemini อยู่ ${elapsed} วินาที ถ้านานผิดปกติลองเปลี่ยน model`;
-  } else if (elapsed >= 60) {
-    prefix = `ยังรอผลตอบกลับจาก Gemini อยู่ ${elapsed} วินาที ไฟล์ยาวหรือโมเดลช้าอาจใช้เวลานาน`;
+  const startedAt = refs.geminiStartedAt || refs.progressStartedAt;
+  const elapsed = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+  if (!refs.geminiStartedAt && !/Gemini|ส่ง|อัปโหลด/.test(action)) {
+    state.message = `${action} - ใช้เวลา ${elapsed} วินาที`;
+    render();
+    return;
   }
+  let prefix = `ส่งคำขอไปยัง Gemini แล้ว ${elapsed} วินาที`;
+  if (elapsed >= 180) prefix = `ยังรอผลตอบกลับจาก Gemini อยู่ ${elapsed} วินาที อาจค้างหรือโมเดลหนาแน่น`;
+  else if (elapsed >= 120) prefix = `ยังรอผลตอบกลับจาก Gemini อยู่ ${elapsed} วินาที ถ้านานผิดปกติลองเปลี่ยน model`;
+  else if (elapsed >= 60) prefix = `ยังรอผลตอบกลับจาก Gemini อยู่ ${elapsed} วินาที ไฟล์ยาวหรือโมเดลช้าอาจใช้เวลานาน`;
   state.message = `${prefix} - ${action}`;
   render();
 }
@@ -1317,6 +1390,20 @@ function formatElapsedSeconds(startedAt = refs.geminiStartedAt || refs.progressS
 
 function formatGeminiSuccessMessage(message) {
   return `${message} - ใช้เวลา ${formatElapsedSeconds()} วินาที`;
+}
+
+function isGeminiProgressText(message = "", action = "") {
+  return /Gemini|ส่ง|อัปโหลด/.test(`${message} ${action}`);
+}
+
+function formatGeminiProgressMessage(message, action = message) {
+  const isGeminiProgress = isGeminiProgressText(message, action);
+  if (isGeminiProgress && !refs.geminiStartedAt) refs.geminiStartedAt = Date.now();
+  const startedAt = isGeminiProgress ? refs.geminiStartedAt : refs.progressStartedAt;
+  const elapsed = formatElapsedSeconds(startedAt || Date.now());
+  return isGeminiProgress
+    ? `${message} - รอมาแล้ว ${elapsed} วินาที`
+    : `${message} - ใช้เวลา ${elapsed} วินาที`;
 }
 
 function startProgressHeartbeat(action) {
@@ -1345,12 +1432,8 @@ function finishCancelableTask(controller) {
 }
 
 function setProgressAction(message, action = message) {
-  state.message = `ส่งคำขอไปยัง Gemini แล้ว - ${message}`;
   refs.progressAction = action;
-  refs.progressStartedAt = Date.now();
-  if (!refs.geminiStartedAt && /Gemini|ส่ง/.test(`${message} ${action}`)) {
-    refs.geminiStartedAt = refs.progressStartedAt;
-  }
+  state.message = formatGeminiProgressMessage(message, action);
   render();
 }
 
@@ -1475,7 +1558,13 @@ async function transcribeAudioBlob(blob, mimeType, options = {}) {
       setProgressAction("กำลังอัปโหลดไฟล์เสียงไป Gemini Files API", "กำลังอัปโหลดไฟล์เสียง");
       const uploaded = await uploadAudioFileToGemini(blob, mimeType, { signal: controller.signal });
       throwIfCancelled(controller.signal);
-      mediaParts = buildTranscriptionMediaParts({ fileUri: uploaded.uri, fileMimeType: uploaded.mimeType }).parts;
+      setProgressAction("อัปโหลดแล้ว กำลังรอ Gemini เตรียมไฟล์เสียง", "กำลังรอ Gemini เตรียมไฟล์เสียง");
+      const activeFile = await waitForGeminiFileActive(uploaded, {
+        signal: controller.signal,
+        onState: () => setProgressAction("อัปโหลดแล้ว กำลังรอ Gemini เตรียมไฟล์เสียง", "กำลังรอไฟล์พร้อมใช้งาน"),
+      });
+      throwIfCancelled(controller.signal);
+      mediaParts = buildTranscriptionMediaParts({ fileUri: activeFile.uri, fileMimeType: activeFile.mimeType }).parts;
       setProgressAction("อัปโหลดแล้ว กำลังรอ Gemini ถอดเสียง", "กำลังรอผลถอดเสียงจาก Gemini");
     } else {
       setProgressAction("กำลังอ่านไฟล์เสียงใน browser", "กำลังเตรียมไฟล์เสียง");
@@ -1926,7 +2015,7 @@ function renderPrivacyModal() {
           </div>
           <div>
             <span>เพื่อความโปร่งใส แอปพลิเคชันนี้เปิดเผย source code เพื่อให้ตรวจสอบการทำงาน: <a href="https://github.com/nitilink/OmKwam" target="_blank" rel="noopener noreferrer">github.com/nitilink/OmKwam</a></span>
-            <span class="privacy-meta">Last updated: 26 Jun 2026, 02:47 ICT</span>
+            <span class="privacy-meta">Last updated: 26 Jun 2026, 23:04 ICT</span>
           </div>
         </div>
       </section>
@@ -2262,7 +2351,7 @@ function render() {
         <div class="brand">
           <div class="brand-mark"><img src="./src/assets/nitilink-logo.png" alt="NitiLink logo"></div>
           <div>
-            <h1>OmKwam 0.34e</h1>
+            <h1>OmKwam 0.34h</h1>
             <p>by NitiLink · A privacy-first workspace for testimony transcription</p>
           </div>
         </div>
