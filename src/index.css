@@ -1526,41 +1526,78 @@ select {
 
   .topbar {
     height: auto;
-    padding: 8px 10px;
+    width: 100%;
+    max-width: 100%;
+    padding: 7px 10px;
     align-items: stretch;
     flex-direction: column;
-    gap: 8px;
+    gap: 7px;
+    overflow: hidden;
   }
 
   .header-actions {
-    flex-wrap: wrap;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: center;
     gap: 6px;
   }
 
   .brand {
-    align-items: flex-start;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    flex: 0 0 auto;
+  }
+
+  .brand h1 {
+    font-size: 15px;
   }
 
   .brand p {
     display: block;
-    max-width: min(100%, 520px);
+    max-width: 100%;
     font-size: 9.5px;
     line-height: 1.35;
+    overflow-wrap: anywhere;
   }
 
   .header-actions button,
   .model-pill-label,
   .status-pill {
-    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .status-pill {
+    grid-column: 1 / 2;
+    min-height: 30px;
   }
 
   .model-pill-label {
+    grid-column: 2 / 4;
     max-width: none;
+    min-height: 30px;
   }
 
   .model-pill {
     max-width: none;
+    min-width: 0;
     width: 100%;
+  }
+
+  .header-actions button {
+    padding: 0 6px;
+    font-size: 10.5px;
+    white-space: nowrap;
   }
 
   .settings-actions {

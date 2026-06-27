@@ -316,7 +316,7 @@ function getIssueDescription(word, fallback = "") {
   const raw = String(normalizedWord.issueDescription || fallback || "").trim();
   const defaultText = normalizedWord.isUnclear
     ? "ถ้อยคำนี้อาจถอดได้ไม่ชัด ควรตรวจเทียบกับเสียงหรือคำต่อคำอีกครั้ง"
-    : "ข้อความนี้อาจผิดปกติ น่าสงสัย หรือขัดต่อสามัญสำนึกทั่วไป ควรตรวจทานอีกครั้ง";
+    : "พบข้อความที่ต้องตรวจสอบ ควรตรวจทานอีกครั้ง";
 
   if (!raw) return defaultText;
   if (/[A-Za-z]/.test(raw)) {
@@ -382,7 +382,7 @@ function getLocalSummaryIssues() {
         originalWord: match[1],
         isUnclear: false,
         isOutofContext: true,
-        issueDescription: "ถ้อยคำนี้ขัดต่อสามัญสำนึกทั่วไปอย่างชัดเจน ควรตรวจทานอีกครั้ง",
+        issueDescription: "พบข้อความที่ต้องตรวจสอบ ควรตรวจทานอีกครั้ง",
         suggestions: ["ผัดกะเพราไก่", "ผัดกะเพราหมู", "ผัดกะเพราเนื้อ"],
         contextSuggestions: [],
       },
@@ -412,7 +412,7 @@ function normalizeSummaryIssueEntry(entry, index) {
       originalWord: text,
       isUnclear,
       isOutofContext,
-      issueDescription: String(entry?.issueDescription || entry?.reason || rawWord?.issueDescription || (isUnclear ? "ถ้อยคำนี้อาจไม่ชัดเจนในข้อความสรุป" : "ถ้อยคำนี้อาจผิดปกติ น่าสงสัย หรือขัดต่อสามัญสำนึกทั่วไป")),
+      issueDescription: String(entry?.issueDescription || entry?.reason || rawWord?.issueDescription || (isUnclear ? "ถ้อยคำนี้อาจไม่ชัดเจนในข้อความสรุป" : "พบข้อความที่ต้องตรวจสอบ")),
       suggestions,
       contextSuggestions: Array.isArray(entry?.contextSuggestions) ? entry.contextSuggestions.map(String).filter(Boolean).slice(0, 5) : [],
     },
@@ -2015,7 +2015,7 @@ function renderPrivacyModal() {
           </div>
           <div>
             <span>เพื่อความโปร่งใส แอปพลิเคชันนี้เปิดเผย source code เพื่อให้ตรวจสอบการทำงาน: <a href="https://github.com/nitilink/OmKwam" target="_blank" rel="noopener noreferrer">github.com/nitilink/OmKwam</a></span>
-            <span class="privacy-meta">Last updated: 26 Jun 2026, 23:04 ICT</span>
+            <span class="privacy-meta">Version: 0.34h · Last updated: 26 Jun 2026, 23:04 ICT</span>
           </div>
         </div>
       </section>
@@ -2042,7 +2042,6 @@ function renderContactModal() {
           <div class="openchat-card">
             <div>
               <strong>LINE OpenChat</strong>
-              <span>สแกน QR เพื่อเข้าร่วมโอเพ่นแชทของ NitiLink</span>
             </div>
             <img class="openchat-qr" src="./src/assets/nitilink-openchat-qr.jpg" alt="NitiLink LINE OpenChat QR code">
           </div>
@@ -2351,7 +2350,7 @@ function render() {
         <div class="brand">
           <div class="brand-mark"><img src="./src/assets/nitilink-logo.png" alt="NitiLink logo"></div>
           <div>
-            <h1>OmKwam 0.34h</h1>
+            <h1>OmKwam</h1>
             <p>by NitiLink · A privacy-first workspace for testimony transcription</p>
           </div>
         </div>
@@ -2568,7 +2567,7 @@ function bindEvents() {
       state.issueNotice = {
         source: "turn",
         kind: word.isUnclear ? "unclear" : "context",
-        title: word.isUnclear ? "ถอดข้อความได้ไม่ชัด" : "ข้อความอาจผิดบริบท",
+        title: word.isUnclear ? "ถอดข้อความได้ไม่ชัด" : "พบข้อความที่ต้องตรวจสอบ",
         description: getIssueDescription(word),
         suggestions,
         turnIndex,
@@ -2710,7 +2709,7 @@ function bindEvents() {
         issueIndex: issue.index,
         summaryStart,
         summaryEnd,
-        title: word.isUnclear ? "ถอดข้อความได้ไม่ชัด" : "ข้อความอาจผิดบริบท",
+        title: word.isUnclear ? "ถอดข้อความได้ไม่ชัด" : "พบข้อความที่ต้องตรวจสอบ",
         description: getIssueDescription(word),
         suggestions,
         word: displayWord,
