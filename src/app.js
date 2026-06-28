@@ -1914,7 +1914,7 @@ function renderSettingsModal() {
           </label>
           <div class="settings-actions">
             <div class="settings-key-actions">
-              <button class="ghost-button" id="load-key" type="button">Load key</button>
+              <button class="ghost-button" id="paste-key" type="button">Paste key</button>
               <button class="ghost-button" id="remove-key" type="button" ${state.apiKey.trim() || readStorage(API_KEY_STORAGE_KEY, "") ? "" : "disabled"}>Remove key</button>
             </div>
             <button data-close-modal="true" type="button">Save & Close</button>
@@ -2476,12 +2476,31 @@ function bindEvents() {
     else removeStorage(API_KEY_STORAGE_KEY);
     render();
   });
-  document.querySelector("#load-key")?.addEventListener("click", () => {
-    const saved = readStorage(API_KEY_STORAGE_KEY, "");
-    state.apiKey = saved;
-    state.persistKey = Boolean(saved);
-    state.message = saved ? "โหลด API key ที่เคยเก็บไว้ในเบราว์เซอร์แล้ว" : "ยังไม่มี API key ที่เก็บไว้ในเบราว์เซอร์นี้";
-    render();
+  document.querySelector("#paste-key")?.addEventListener("click", async () => {
+    const input = document.querySelector("#api-key");
+    if (!navigator.clipboard?.readText || !input) {
+      state.message = "เบราว์เซอร์นี้ไม่อนุญาตให้อ่าน clipboard ให้กด Ctrl+V ในช่อง API key แทน";
+      render();
+      return;
+    }
+    try {
+      const pasted = (await navigator.clipboard.readText()).trim();
+      if (!pasted) {
+        state.message = "ไม่พบข้อความใน clipboard";
+        render();
+        return;
+      }
+      input.dataset.maskedValue = "";
+      input.type = "password";
+      input.value = pasted;
+      state.apiKey = pasted;
+      if (state.persistKey) writeStorage(API_KEY_STORAGE_KEY, state.apiKey);
+      state.message = "วาง API key จาก clipboard แล้ว";
+      render();
+    } catch {
+      state.message = "เบราว์เซอร์ไม่อนุญาตให้อ่าน clipboard ให้กด Ctrl+V ในช่อง API key แทน";
+      render();
+    }
   });
   document.querySelector("#remove-key")?.addEventListener("click", () => {
     removeStorage(API_KEY_STORAGE_KEY);
