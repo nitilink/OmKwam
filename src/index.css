@@ -309,6 +309,7 @@ main {
 }
 
 .audio-card {
+  min-width: 0;
   min-height: 56px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -556,9 +557,10 @@ main {
 }
 
 .audio-player {
+  min-width: 0;
   width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(120px, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   margin-top: 3px;
@@ -568,6 +570,8 @@ main {
 }
 
 .audio-player input[type="range"] {
+  min-width: 0;
+  width: 100%;
   min-height: 16px;
   padding: 0;
   border: 0;
@@ -1620,6 +1624,9 @@ select {
 
   .player-card {
     grid-column: auto;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 7px;
   }
 
   .panel-status {
@@ -1633,9 +1640,41 @@ select {
     padding: 6px 10px;
   }
 
+  .audio-card.player-card {
+    min-height: 92px;
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: center;
+  }
+
   .audio-actions {
+    min-width: 0;
     flex-wrap: nowrap;
     justify-content: flex-end;
+  }
+
+  .player-card .audio-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .player-card .audio-actions button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .player-card .audio-card-text {
+    width: 100%;
+  }
+
+  .player-card .latest-audio {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .player-card .audio-player {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    margin-top: 5px;
   }
 
   .audio-deck button,
@@ -1667,5 +1706,23 @@ select {
     padding: 6px 12px;
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 380px) {
+  .audio-deck {
+    padding-inline: 8px;
+  }
+
+  .audio-card {
+    padding-inline: 8px;
+    gap: 8px;
+  }
+
+  .audio-deck button,
+  .audio-deck .file-button {
+    min-width: 0;
+    padding: 0 8px;
+    font-size: 10.5px;
   }
 }
