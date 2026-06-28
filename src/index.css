@@ -99,6 +99,19 @@ select {
   outline: none;
 }
 
+select {
+  color-scheme: dark;
+  background-color: #0b0d10;
+  color: var(--text);
+  accent-color: #7dd3fc;
+}
+
+select option,
+select optgroup {
+  background-color: #0b0d10;
+  color: #e7e7ea;
+}
+
 textarea:focus,
 input:focus,
 select:focus {
@@ -272,7 +285,7 @@ p {
   min-height: 28px;
   max-width: 194px;
   border: 0;
-  background: transparent;
+  background: #11151a;
   padding: 0 18px 0 0;
   overflow: hidden;
   color: #c7cdd6;
@@ -1108,7 +1121,7 @@ main {
 }
 
 .settings-modal {
-  width: min(560px, 100%);
+  width: min(600px, 100%);
 }
 
 .case-info-modal,
@@ -1200,8 +1213,8 @@ main {
 
 .settings-form {
   display: grid;
-  gap: 14px;
-  padding: 18px;
+  gap: 16px;
+  padding: 20px 22px 22px;
 }
 
 .case-info-form {
@@ -1272,12 +1285,17 @@ select {
   padding: 0 11px;
 }
 
+.api-key-input {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
 .checkline {
-  min-height: 40px;
-  border: 1px solid #2a303a;
-  border-radius: 9px;
-  background: #0b0d10;
-  padding: 0 11px;
+  min-height: 22px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 2px;
+  margin-top: -3px;
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -1295,13 +1313,14 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 14px;
+  padding-top: 4px;
 }
 
 .settings-key-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 

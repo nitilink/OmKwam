@@ -74,7 +74,7 @@ The Case Info panel stores limited case context: preliminary facts, case documen
 
 The working static frontend contains the prompt text required for browser-side Gemini requests. If the app is deployed as a static frontend, users can inspect that prompt text in the served JavaScript.
 
-For public GitHub distribution, sensitive private prompt text is redacted from this public-source package. This package is for transparency and review, not for direct functional deployment unless the private prompt text is restored by the maintainer.
+For public GitHub distribution, sensitive or private prompt text may be redacted from a separate public-source package. A redacted public-source package is for transparency and review, not for direct functional deployment unless the private prompt text is restored by the maintainer.
 
 ## Tutorial
 
