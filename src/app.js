@@ -208,6 +208,20 @@ function prepareApiKeyInputForEditing(input) {
   input.value = "";
 }
 
+function setApiKeyInputValue(input, value) {
+  if (!input) return;
+  const cleanValue = String(value || "").trim();
+  input.dataset.maskedValue = "";
+  input.type = "password";
+  input.value = cleanValue;
+  state.apiKey = cleanValue;
+  if (state.persistKey) writeStorage(API_KEY_STORAGE_KEY, state.apiKey);
+  document.querySelector("#remove-key")?.toggleAttribute("disabled", !state.apiKey.trim() && !readStorage(API_KEY_STORAGE_KEY, ""));
+  input.focus();
+  const cursor = input.value.length;
+  input.setSelectionRange?.(cursor, cursor);
+}
+
 function formatDownloadTimestamp(date = new Date()) {
   const pad = (value) => String(value).padStart(2, "0");
   return [
@@ -1914,10 +1928,10 @@ function renderSettingsModal() {
           </label>
           <div class="settings-actions">
             <div class="settings-key-actions">
-              <button class="ghost-button" id="paste-key" type="button">Paste key</button>
-              <button class="ghost-button" id="remove-key" type="button" ${state.apiKey.trim() || readStorage(API_KEY_STORAGE_KEY, "") ? "" : "disabled"}>Remove key</button>
+              <button class="ghost-button" id="paste-key" type="button">วาง API key</button>
+              <button class="ghost-button" id="remove-key" type="button" ${state.apiKey.trim() || readStorage(API_KEY_STORAGE_KEY, "") ? "" : "disabled"}>ลบ API key</button>
             </div>
-            <button data-close-modal="true" type="button">Save & Close</button>
+            <button data-close-modal="true" type="button">บันทึกแล้วปิด</button>
           </div>
         </div>
       </section>
@@ -2478,28 +2492,37 @@ function bindEvents() {
   });
   document.querySelector("#paste-key")?.addEventListener("click", async () => {
     const input = document.querySelector("#api-key");
+    const button = document.querySelector("#paste-key");
+    if (input) {
+      prepareApiKeyInputForEditing(input);
+      input.focus();
+      input.select?.();
+    }
     if (!navigator.clipboard?.readText || !input) {
       state.message = "เบราว์เซอร์นี้ไม่อนุญาตให้อ่าน clipboard ให้กด Ctrl+V ในช่อง API key แทน";
-      render();
+      if (button) button.textContent = "กด Ctrl+V";
       return;
     }
     try {
       const pasted = (await navigator.clipboard.readText()).trim();
       if (!pasted) {
         state.message = "ไม่พบข้อความใน clipboard";
-        render();
+        input.focus();
+        if (button) button.textContent = "Clipboard ว่าง";
         return;
       }
-      input.dataset.maskedValue = "";
-      input.type = "password";
-      input.value = pasted;
-      state.apiKey = pasted;
-      if (state.persistKey) writeStorage(API_KEY_STORAGE_KEY, state.apiKey);
+      setApiKeyInputValue(input, pasted);
       state.message = "วาง API key จาก clipboard แล้ว";
-      render();
+      if (button) {
+        button.textContent = "วางแล้ว";
+        window.setTimeout(() => {
+          if (document.querySelector("#paste-key") === button) button.textContent = "วาง API key";
+        }, 1200);
+      }
     } catch {
       state.message = "เบราว์เซอร์ไม่อนุญาตให้อ่าน clipboard ให้กด Ctrl+V ในช่อง API key แทน";
-      render();
+      input.focus();
+      if (button) button.textContent = "กด Ctrl+V";
     }
   });
   document.querySelector("#remove-key")?.addEventListener("click", () => {
