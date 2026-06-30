@@ -1,10 +1,10 @@
-﻿# OmKwam 0.34h
+# OmKwam v0.36
 
-OmKwam 0.34h is a privacy-first experimental workspace for Thai testimony transcription. It can record or import audio, transcribe it with Gemini using the user's own API key, help review uncertain words, and draft a concise testimony summary for human review.
+OmKwam v0.36 is a privacy-first experimental workspace for Thai testimony transcription. It can record or import audio, transcribe it with Gemini using the user's own API key, help review uncertain words, and draft a concise testimony summary for human review.
 
 OmKwam is part of the NitiLink project.
 
-Last updated: 26 Jun 2026, 23:04 ICT.
+Last updated: 29 Jun 2026, 22:26 ICT.
 
 ## Experimental Notice
 
@@ -82,9 +82,9 @@ Video tutorial content will be added after publication.
 
 ## Contact
 
-Developer: NitiLink
+Developer: [REDACTED]
 
-Email: [redacted in public source package]
+Email: [REDACTED]
 
 ## Use Notice
 
@@ -93,4 +93,3 @@ Free for personal and public-interest use. Commercial use is prohibited.
 ## License
 
 License information will be added before public release.
-
