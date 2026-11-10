@@ -82,3 +82,10 @@ export function buildSpellcheckPrompt(transcriptText) {
   void transcriptText;
   return REDACTED;
 }
+
+// Layout-only tidy: whitespace and line breaks, never wording.
+// Uses: text
+export function buildReflowPrompt(text) {
+  void text;
+  return REDACTED;
+}

@@ -4,8 +4,8 @@
 // No UI/state mutation happens here either, beyond reading the API key/model
 // the user configured.
 
-import { state, DEFAULT_MODEL, getEffectiveModel } from "./state.js?v=0.39";
-import { buildNoCacheDirective } from "./prompts.js?v=0.39";
+import { state, DEFAULT_MODEL, getEffectiveModel } from "./state.js?v=0.39.11";
+import { buildNoCacheDirective } from "./prompts.js?v=0.39.11";
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_UPLOAD_ENDPOINT = "https://generativelanguage.googleapis.com/upload/v1beta/files";
@@ -104,7 +104,7 @@ export async function callGemini(parts, responseMimeType, options = {}) {
   const apiKey = state.apiKey.trim();
   if (!apiKey) throw new Error("กรุณาใส่ Gemini API key ก่อนใช้งาน");
 
-  const model = encodeURIComponent(getEffectiveModel());
+  const model = encodeURIComponent(String(options.model || getEffectiveModel()).trim() || getEffectiveModel());
   const requestId = options.requestId || makeRequestId("gemini");
   const requestParts = [...parts, { text: buildNoCacheDirective(requestId) }];
   throwIfCancelled(options.signal);

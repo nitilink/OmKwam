@@ -13,14 +13,14 @@
   getEffectiveModel,
   isCustomModelSelection,
   isPresetModel,
-} from "./state.js?v=0.39";
-import { readStorage, writeStorage, removeStorage } from "./storage.js?v=0.39";
+} from "./state.js?v=0.39.11";
+import { readStorage, writeStorage, removeStorage } from "./storage.js?v=0.39.11";
 import {
   DICTIONARY_STORAGE_KEY,
   DEFAULT_DICTIONARY,
   cleanDictionaryText,
   parseDictionaryRules,
-} from "./dictionary.js?v=0.39";
+} from "./dictionary.js?v=0.39.11";
 import {
   DEFAULT_CASE_INFO,
   normalizeCaseInfo,
@@ -29,7 +29,7 @@ import {
   formatCaseInfoForPrompt,
   formatCaseInfoForExport,
   hasCaseInfoContent,
-} from "./case-info.js?v=0.39";
+} from "./case-info.js?v=0.39.11";
 import {
   isCancelError,
   makeCancelError,
@@ -48,7 +48,7 @@ import {
   uploadAudioFileToGemini,
   verifyApiKey,
   listGeminiModelIds,
-} from "./gemini-client.js?v=0.39";
+} from "./gemini-client.js?v=0.39.11";
 import {
   buildRawTranscriptionPrompt,
   buildDocumentTranscriptionPrompt,
@@ -56,8 +56,15 @@ import {
   buildSummaryPrompt,
   buildSummaryIssueAnalysisPrompt,
   buildSpellcheckPrompt,
-} from "./prompts.js?v=0.39";
-import { planAudioChunks, buildChunkAudioBlob, decodeAudioSource } from "./audio-processing.js?v=0.39";
+  buildReflowPrompt,
+} from "./prompts.js?v=0.39.11";
+import {
+  applyLayoutReflow,
+  isLayoutOnlyChange,
+  layoutFingerprint,
+  reflowTextLocally,
+} from "./reflow.js?v=0.39.11";
+import { planAudioChunks, buildChunkAudioBlob, decodeAudioSource } from "./audio-processing.js?v=0.39.11";
 import {
   classifyImportFile,
   filesToDocumentPages,
@@ -67,7 +74,7 @@ import {
   attachPreview,
   cropImageBlob,
   clampCropRect,
-} from "./image-processing.js?v=0.39";
+} from "./image-processing.js?v=0.39.11";
 import {
   createTranscriptSegmentsFromPlan,
   createTranscriptSegmentsFromDocument,
@@ -81,7 +88,10 @@ import {
   findSegmentById,
   mergeNewSourceSegments,
   failUnfinishedSegments,
-} from "./transcript-segments.js?v=0.39";
+  unlinkRemovedDocumentPages,
+  reorderLinkedDocumentSegments,
+  replaceLinkedDocumentSegments,
+} from "./transcript-segments.js?v=0.39.11";
 import {
   SPELL_BUSY,
   applyCorrectionsToText,
@@ -92,12 +102,12 @@ import {
   renderTextWithSpellFixes,
   revertFixInText,
   splitTextIntoSpellChunks,
-} from "./spellcheck.js?v=0.39";
+} from "./spellcheck.js?v=0.39.11";
 import {
   applyReviewedTextToRawSegments,
   stripSpeakerPrefixes,
   wrapSegmentsForReview,
-} from "./speaker-labels.js?v=0.39";
+} from "./speaker-labels.js?v=0.39.11";
 import {
   escapeHtml,
   escapeRegExp,
@@ -115,7 +125,7 @@ import {
   formatExternalAudioConversionMessage,
   formatAudioInfo,
   fileToBase64,
-} from "./utils.js?v=0.39";
+} from "./utils.js?v=0.39.11";
 
 function splitWords(text) {
   return String(text).split(/(\s+)/).filter(Boolean).map((word) => ({ word, originalWord: word }));
@@ -853,11 +863,13 @@ function updateTranscriptEditorState(element) {
   state.transcriptDraft = element.innerText;
   state.turns = [];
   state.issueNotice = null;
+  clearReflowUndo("transcript");
   pruneSpellFixesFromCurrentText();
   const hasText = Boolean(state.transcriptDraft.trim());
   element.classList.toggle("is-empty", !hasText);
   document.querySelector("#copy-transcript")?.toggleAttribute("disabled", !hasText);
   document.querySelector("#download-transcript")?.toggleAttribute("disabled", !hasText);
+  document.querySelector("#reflow-transcript")?.toggleAttribute("disabled", isControlDisabled("reflow-transcript"));
   const clearTranscript = document.querySelector("#clear-transcript");
   if (clearTranscript) {
     const canUndo = hasClearedTranscript();
@@ -1453,6 +1465,7 @@ function formatTranscript() {
 function refreshTranscriptActionButtons() {
   const map = {
     "#copy-transcript": "copy-transcript",
+    "#reflow-transcript": "reflow-transcript",
     "#download-transcript": "download-transcript",
     "#clear-transcript": "clear-transcript",
     "#summarize": "summarize",
@@ -1462,6 +1475,7 @@ function refreshTranscriptActionButtons() {
     "#start-recording": "start-recording",
     "#start-camera": "start-camera",
     "#copy-summary": "copy-summary",
+    "#reflow-summary": "reflow-summary",
     "#download-summary": "download-summary",
     "#clear-summary": "clear-summary",
     "#play-audio": "play-audio",
@@ -1569,7 +1583,7 @@ function setProgressAction(message, action = message) {
 }
 
 function cancelActiveTask() {
-  if (!refs.abortController || !["transcribing", "summarizing", "reviewing-speakers", SPELL_BUSY].includes(state.busy)) return;
+  if (!refs.abortController || !["transcribing", "summarizing", "reviewing-speakers", SPELL_BUSY, "reflowing"].includes(state.busy)) return;
   refs.cancelRequested = true;
   refs.abortController.abort();
   state.message = "กำลังหยุดงานที่ส่งไป Gemini";
@@ -1694,7 +1708,9 @@ function explainBusyBlocksNewSource() {
           ? "กำลังตรวจสอบผู้พูด รอให้เสร็จหรือกดหยุดก่อน แล้วค่อยนำเข้าไฟล์ใหม่"
           : state.busy === SPELL_BUSY
             ? "กำลังตรวจคำผิด รอให้เสร็จหรือกดหยุดก่อน แล้วค่อยนำเข้าไฟล์ใหม่"
-            : "กำลังทำงานอยู่ รอให้เสร็จหรือกดหยุดก่อน แล้วค่อยนำเข้าไฟล์ใหม่";
+            : state.busy === "reflowing"
+              ? "กำลังจัดหน้า รอให้เสร็จหรือกดหยุดก่อน แล้วค่อยนำเข้าไฟล์ใหม่"
+              : "กำลังทำงานอยู่ รอให้เสร็จหรือกดหยุดก่อน แล้วค่อยนำเข้าไฟล์ใหม่";
   render();
   return true;
 }
@@ -1738,30 +1754,11 @@ function ensureDocumentSourceForAppend() {
 }
 
 function syncDocumentSegmentMeta() {
-  if (!Array.isArray(state.transcriptSegments) || state.latestSourceKind !== "document") return;
-  const byPage = new Map(state.transcriptSegments.filter((segment) => isDocumentSegment(segment) && segment.audioSourceId === refs.audioSourceId).map((segment) => [segment.pageId, segment]));
-  const keptIds = new Set(refs.docPages.map((page) => page.id));
-  const others = state.transcriptSegments.filter((segment) => !(isDocumentSegment(segment) && segment.audioSourceId === refs.audioSourceId));
-  const firstIndex = state.transcriptSegments.findIndex((segment) => isDocumentSegment(segment) && segment.audioSourceId === refs.audioSourceId);
-  const ordered = refs.docPages.map((page, index) => {
-    const existing = byPage.get(page.id);
-    if (!existing) return null;
-    existing.chunkIndex = index;
-    existing.pageNumber = index + 1;
-    existing.chunkCount = refs.docPages.length;
-    existing.filename = page.filename;
-    return existing;
-  }).filter(Boolean);
-  // Drop segments whose page was removed.
-  for (const [pageId, segment] of byPage) {
-    if (!keptIds.has(pageId)) {
-      // leave it out of `ordered`
-    }
-  }
-  if (firstIndex === -1) return;
-  const insertAt = state.transcriptSegments.slice(0, firstIndex).filter((segment) => !(isDocumentSegment(segment) && segment.audioSourceId === refs.audioSourceId)).length;
-  const keptOthers = others;
-  state.transcriptSegments = [...keptOthers.slice(0, insertAt), ...ordered, ...keptOthers.slice(insertAt)];
+  if (!Array.isArray(state.transcriptSegments)) return;
+  const sourceId = refs.audioSourceId;
+  const pageIds = refs.docPages.map((page) => page.id);
+  state.transcriptSegments = unlinkRemovedDocumentPages(state.transcriptSegments, sourceId, pageIds);
+  state.transcriptSegments = reorderLinkedDocumentSegments(state.transcriptSegments, sourceId, refs.docPages);
   rebuildTranscriptDraftFromSegments();
 }
 
@@ -1801,7 +1798,7 @@ const DOC_THUMB_GHOST_SCALE = 0.86;
 const DOC_THUMB_GHOST_LIFT_MOUSE = 18;
 const DOC_THUMB_GHOST_LIFT_TOUCH = 56;
 const DOC_THUMB_REORDER_MS = 180;
-const DOCUMENT_IMPORT_READY_MESSAGE = "กรุณาขยายรูปเพื่อ crop และเรียงลำดับรูป เสร็จแล้วให้กดปุ่มถอดข้อความ";
+const DOCUMENT_IMPORT_READY_MESSAGE = "กรุณาเรียงลำดับรูป ขยายรูปเพื่อ crop เสร็จแล้วให้กดปุ่มถอดข้อความ";
 const DOC_CROP_HANDLE = 14;
 const DOC_CROP_HIT = 20;
 
@@ -2541,13 +2538,17 @@ async function transcribeCurrentDocument() {
   if (!existing.length || allOk) {
     const legacyText = Array.isArray(state.transcriptSegments) ? "" : getTranscriptEditorText();
     const newSegments = createTranscriptSegmentsFromDocument(refs.docPages, sourceId);
-    state.transcriptSegments = mergeNewSourceSegments(state.transcriptSegments, legacyText, newSegments, sourceId);
+    if (existing.some((segment) => segment.unlinked)) {
+      state.transcriptSegments = replaceLinkedDocumentSegments(state.transcriptSegments, sourceId, newSegments);
+    } else {
+      state.transcriptSegments = mergeNewSourceSegments(state.transcriptSegments, legacyText, newSegments, sourceId);
+    }
     toRun = newSegments;
   } else {
     const additions = [];
     refs.docPages.forEach((page, index) => {
       let segment = existingByPage.get(page.id);
-      if (!segment) {
+      if (!segment || segment.unlinked) {
         segment = createTranscriptSegmentsFromDocument([page], sourceId)[0];
         additions.push(segment);
       }
@@ -2557,12 +2558,19 @@ async function transcribeCurrentDocument() {
       segment.filename = page.filename;
     });
     if (additions.length) {
-      const firstIndex = state.transcriptSegments.findIndex((segment) => isDocumentSegment(segment) && segment.audioSourceId === sourceId);
-      const insertAt = firstIndex === -1 ? state.transcriptSegments.length : firstIndex + existing.length;
-      state.transcriptSegments = [...state.transcriptSegments.slice(0, insertAt), ...additions, ...state.transcriptSegments.slice(insertAt)];
+      state.transcriptSegments = replaceLinkedDocumentSegments(state.transcriptSegments, sourceId, [
+        ...existing.filter((segment) => !segment.unlinked && refs.docPages.some((page) => page.id === segment.pageId)),
+        ...additions,
+      ]);
     }
     syncDocumentSegmentMeta();
-    toRun = (state.transcriptSegments || []).filter((segment) => isDocumentSegment(segment) && segment.audioSourceId === sourceId && segment.status !== "ok");
+    toRun = (state.transcriptSegments || []).filter((segment) => (
+      isDocumentSegment(segment)
+      && segment.audioSourceId === sourceId
+      && segment.status !== "ok"
+      && !segment.unlinked
+      && refs.docPages.some((page) => page.id === segment.pageId)
+    ));
     if (!toRun.length) {
       state.message = "ถอดข้อความครบทุกหน้าแล้ว";
       render();
@@ -3163,7 +3171,7 @@ async function retryTranscriptSegments(segments, labels) {
 
 function retryTranscriptSegment(segmentId) {
   const segment = findSegmentById(state.transcriptSegments, segmentId);
-  if (!segment || segment.status !== "failed") return;
+  if (!segment || segment.status !== "failed" || segment.unlinked) return;
   const isDoc = isDocumentSegment(segment);
   return retryTranscriptSegments([segment], {
     fail: isDoc ? "ถอดหน้านี้ไม่สำเร็จ" : "ถอดท่อนนี้ไม่สำเร็จ",
@@ -3172,7 +3180,7 @@ function retryTranscriptSegment(segmentId) {
 }
 
 function retryAllFailedTranscriptSegments() {
-  const failed = getFailedSegments(state.transcriptSegments);
+  const failed = getFailedSegments(state.transcriptSegments).filter((segment) => !segment.unlinked);
   const unit = segmentUnit(failed);
   return retryTranscriptSegments(failed, {
     fail: unit === "หน้า" ? "ถอดหน้าที่พลาดใหม่ไม่สำเร็จ" : "ถอดท่อนที่พลาดใหม่ไม่สำเร็จ",
@@ -3714,6 +3722,198 @@ function canTranscribeNow() {
 // The button for the running task stays enabled so a second click can cancel
 // it; copy/download/play/fullscreen stay usable; anything that would start
 // or clobber a conflicting task is disabled.
+
+const REFLOW_FALLBACK_MODEL = "gemini-3.5-flash-lite";
+
+function transcriptReflowFingerprint() {
+  if (Array.isArray(state.transcriptSegments) && state.transcriptSegments.length) {
+    return state.transcriptSegments.map((segment) => `${segment.id}:${segment.text || ""}`).join("\n");
+  }
+  return `draft:${state.transcriptDraft || ""}`;
+}
+
+function summaryReflowFingerprint() {
+  return `summary:${state.summary || ""}`;
+}
+
+function canUndoReflow(panel) {
+  const undo = refs.reflowUndo;
+  if (!undo || undo.panel !== panel) return false;
+  const now = panel === "summary" ? summaryReflowFingerprint() : transcriptReflowFingerprint();
+  return now === undo.afterFingerprint;
+}
+
+function clearReflowUndo(panel) {
+  if (!refs.reflowUndo) return;
+  if (!panel || refs.reflowUndo.panel === panel) refs.reflowUndo = null;
+}
+
+function snapshotTranscriptForReflow() {
+  if (Array.isArray(state.transcriptSegments) && state.transcriptSegments.length) {
+    return {
+      kind: "segments",
+      segments: state.transcriptSegments.map((segment) => ({ id: segment.id, text: segment.text })),
+      draft: state.transcriptDraft,
+    };
+  }
+  return { kind: "draft", draft: state.transcriptDraft };
+}
+
+function restoreTranscriptReflow(snapshot) {
+  if (snapshot?.kind === "segments" && Array.isArray(state.transcriptSegments)) {
+    const byId = new Map((snapshot.segments || []).map((item) => [item.id, item.text]));
+    state.transcriptSegments.forEach((segment) => {
+      if (byId.has(segment.id)) segment.text = byId.get(segment.id);
+    });
+    rebuildTranscriptDraftFromSegments();
+  } else {
+    state.transcriptDraft = snapshot?.draft || "";
+    state.turns = [];
+  }
+  reanchorSpellFixes();
+}
+
+async function requestReflowText(text, signal) {
+  const preferred = getEffectiveModel();
+  const fallback = REFLOW_FALLBACK_MODEL;
+  const parts = [{ text: buildReflowPrompt(text) }];
+  try {
+    return await callGemini(parts, "text/plain", { signal, model: preferred });
+  } catch (error) {
+    if (Number(error?.status) === 503 && preferred !== fallback) {
+      return await callGemini(parts, "text/plain", { signal, model: fallback });
+    }
+    throw error;
+  }
+}
+
+async function reflowOneText(original, signal) {
+  const source = String(original || "");
+  if (!source.trim()) return { text: source, changed: false, reason: "empty" };
+  let proposed = "";
+  try {
+    proposed = await requestReflowText(source, signal);
+  } catch (error) {
+    if (isCancelError(error)) throw error;
+    const applied = applyLayoutReflow(source, reflowTextLocally(source));
+    return { text: applied.text, changed: applied.text !== source, reason: applied.accepted ? "local-fallback" : "rejected", error };
+  }
+  const applied = applyLayoutReflow(source, proposed);
+  return { text: applied.text, changed: applied.text !== source, reason: applied.reason };
+}
+
+function undoReflow(panel) {
+  const undo = refs.reflowUndo;
+  if (!canUndoReflow(panel) || !undo) return false;
+  if (panel === "summary") state.summary = undo.before.summary;
+  else restoreTranscriptReflow(undo.before);
+  refs.reflowUndo = null;
+  state.message = "คืนค่าการจัดหน้าแล้ว";
+  render();
+  return true;
+}
+
+async function runReflow(panel) {
+  if (state.busy === "reflowing" && refs.reflowPanel === panel) {
+    cancelActiveTask();
+    return;
+  }
+  if (state.busy) return;
+  syncFormState();
+  if (undoReflow(panel)) return;
+
+  if (panel === "summary") {
+    if (!String(state.summary || "").trim()) {
+      state.message = "ยังไม่มีข้อความสรุปให้จัดหน้า";
+      render();
+      return;
+    }
+  } else if (!hasTranscriptContent()) {
+    state.message = "ยังไม่มีข้อความให้จัดหน้า";
+    render();
+    return;
+  }
+
+  const before = panel === "summary"
+    ? { summary: state.summary }
+    : snapshotTranscriptForReflow();
+  refs.reflowPanel = panel;
+  const controller = beginCancelableTask("reflowing", "กำลังจัดหน้า", "กำลังจัดหน้า");
+  try {
+    if (panel === "summary") {
+      const result = await reflowOneText(state.summary, controller.signal);
+      throwIfCancelled(controller.signal);
+      if (result.changed) {
+        state.summary = result.text;
+        refs.reflowUndo = { panel, before, afterFingerprint: summaryReflowFingerprint() };
+        state.message = formatGeminiSuccessMessage("จัดหน้าแล้ว กดจัดหน้าอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม");
+      } else if (result.error) {
+        handleGeminiError(result.error, "จัดหน้าไม่สำเร็จ จึงใช้ข้อความเดิม");
+      } else {
+        state.message = result.reason === "rejected"
+          ? "ผลจัดหน้าเปลี่ยนคำ จึงใช้ข้อความเดิม"
+          : "ข้อความจัดหน้าอยู่แล้ว ไม่ต้องเปลี่ยน";
+      }
+    } else if (Array.isArray(state.transcriptSegments) && state.transcriptSegments.some((segment) => segment.status === "ok" && String(segment.text || "").trim())) {
+      const targets = state.transcriptSegments.filter((segment) => segment.status === "ok" && String(segment.text || "").trim());
+      let changed = 0;
+      let rejected = 0;
+      let lastError = null;
+      for (const segment of targets) {
+        throwIfCancelled(controller.signal);
+        const result = await reflowOneText(segment.text, controller.signal);
+        if (result.changed) {
+          segment.text = result.text;
+          changed += 1;
+        } else if (result.reason === "rejected") {
+          rejected += 1;
+        }
+        if (result.error) lastError = result.error;
+      }
+      rebuildTranscriptDraftFromSegments();
+      reanchorSpellFixes();
+      if (changed) {
+        refs.reflowUndo = { panel, before, afterFingerprint: transcriptReflowFingerprint() };
+        const extra = rejected ? ` (บางท่อนคงเดิมเพราะผลจัดหน้าไม่ผ่านการตรวจ)` : "";
+        state.message = formatGeminiSuccessMessage(`จัดหน้าแล้ว กดจัดหน้าอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม${extra}`);
+      } else if (lastError && !changed) {
+        handleGeminiError(lastError, "จัดหน้าไม่สำเร็จ จึงใช้ข้อความเดิม");
+      } else {
+        state.message = rejected
+          ? "ผลจัดหน้าเปลี่ยนคำ จึงใช้ข้อความเดิม"
+          : "ข้อความจัดหน้าอยู่แล้ว ไม่ต้องเปลี่ยน";
+      }
+    } else {
+      const result = await reflowOneText(getTranscriptEditorText(), controller.signal);
+      throwIfCancelled(controller.signal);
+      if (result.changed) {
+        state.transcriptDraft = result.text;
+        state.turns = [];
+        reanchorSpellFixes();
+        refs.reflowUndo = { panel, before, afterFingerprint: transcriptReflowFingerprint() };
+        state.message = formatGeminiSuccessMessage("จัดหน้าแล้ว กดจัดหน้าอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม");
+      } else if (result.error) {
+        handleGeminiError(result.error, "จัดหน้าไม่สำเร็จ จึงใช้ข้อความเดิม");
+      } else {
+        state.message = result.reason === "rejected"
+          ? "ผลจัดหน้าเปลี่ยนคำ จึงใช้ข้อความเดิม"
+          : "ข้อความจัดหน้าอยู่แล้ว ไม่ต้องเปลี่ยน";
+      }
+    }
+  } catch (error) {
+    if (isCancelError(error)) {
+      state.message = "หยุดการจัดหน้าแล้ว";
+    } else {
+      handleGeminiError(error, "จัดหน้าไม่สำเร็จ");
+    }
+  } finally {
+    finishCancelableTask(controller);
+    refs.reflowPanel = "";
+    state.busy = null;
+    render();
+  }
+}
+
 function isControlDisabled(name) {
   const busy = state.busy;
   const isCancelButton = (
@@ -3722,6 +3922,7 @@ function isControlDisabled(name) {
     || (busy === "reviewing-speakers" && name === "review-speakers")
     || (busy === SPELL_BUSY && name === "spellcheck")
     || (busy === "recording" && name === "stop-recording")
+    || (busy === "reflowing" && name === (refs.reflowPanel === "summary" ? "reflow-summary" : "reflow-transcript"))
   );
   if (isCancelButton) return false;
 
@@ -3749,9 +3950,13 @@ function isControlDisabled(name) {
     case "copy-transcript":
     case "download-transcript":
       return !hasTranscriptContent();
+    case "reflow-transcript":
+      return blocked || !hasTranscriptContent();
     case "copy-summary":
     case "download-summary":
       return !String(state.summary || "").trim();
+    case "reflow-summary":
+      return blocked || !String(state.summary || "").trim();
     case "play-audio":
     case "download-audio":
     case "audio-seek":
@@ -4278,7 +4483,7 @@ function renderPrivacyModal() {
           </div>
           <div>
             <span>เพื่อความโปร่งใส แอปพลิเคชันนี้เปิดเผย source code เพื่อให้ตรวจสอบการทำงาน: <a href="https://github.com/nitilink/OmKwam" target="_blank" rel="noopener noreferrer">github.com/nitilink/OmKwam</a></span>
-            <span class="privacy-meta">Version: v0.39 · Last updated: 10 Nov 2026, 22:30 ICT</span>
+            <span class="privacy-meta">Version: v0.39 · Last updated: 10 Nov 2026, 23:40 ICT</span>
           </div>
         </div>
       </section>
@@ -4403,6 +4608,7 @@ function getPanelStatus() {
   if (state.busy === "summarizing") return { tone: "processing", text: state.message || "กำลังสรุปคำเบิกความ" };
   if (state.busy === "reviewing-speakers") return { tone: "processing", text: state.message || "กำลังตรวจสอบผู้พูด" };
   if (state.busy === SPELL_BUSY) return { tone: "processing", text: state.message || "กำลังตรวจคำผิด" };
+  if (state.busy === "reflowing") return { tone: "processing", text: state.message || "กำลังจัดหน้า" };
   if (!state.message) return null;
   if (/ไม่สำเร็จ|ไม่น่าเชื่อถือ|ไม่เปลี่ยนแปลง|error|กรุณา|ยังไม่มี|ไม่รองรับ|ไม่ได้|ไม่พบ/.test(state.message)) return { tone: "warning", text: state.message };
   if (/สำเร็จ|พร้อม|โหลด|บันทึก/.test(state.message)) return { tone: "success", text: state.message };
@@ -4704,6 +4910,7 @@ function renderWorkTab() {
         <div class="turn-list">${turnHtml}</div>
         <div class="button-row bottom-actions mini-actions">
           <button class="ghost-button" id="copy-transcript" type="button" ${disabledAttr("copy-transcript")}>${state.copyTranscriptOk ? "คัดลอกแล้ว" : "คัดลอก"}</button>
+          <button class="ghost-button" id="reflow-transcript" type="button" ${disabledAttr("reflow-transcript")} ${state.busy === "reflowing" && refs.reflowPanel === "transcript" ? 'aria-busy="true" title="กดเพื่อยกเลิก"' : (canUndoReflow("transcript") ? 'title="กดอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม"' : 'title="จัดระเบียบการขึ้นบรรทัดโดยไม่เปลี่ยนคำ"')}>จัดหน้า</button>
           <button class="ghost-button" id="download-transcript" type="button" ${disabledAttr("download-transcript")}>ดาวน์โหลด .txt</button>
           <button class="ghost-button" id="clear-transcript" type="button" ${disabledAttr("clear-transcript")}>${canUndoTranscriptClear ? "ยกเลิกล้างข้อความ" : "ล้างข้อความ"}</button>
         </div>
@@ -4721,6 +4928,7 @@ function renderWorkTab() {
         <div id="summary-text" class="summary-output ${state.summary.trim() ? "" : "is-empty"}" contenteditable="plaintext-only" spellcheck="false" data-placeholder="ผลลัพธ์การสรุปความจะแสดงที่นี่">${renderSummaryText()}</div>
         <div class="button-row bottom-actions mini-actions">
           <button class="ghost-button" id="copy-summary" type="button" ${disabledAttr("copy-summary")}>${state.copyOk ? "คัดลอกแล้ว" : "คัดลอก"}</button>
+          <button class="ghost-button" id="reflow-summary" type="button" ${disabledAttr("reflow-summary")} ${state.busy === "reflowing" && refs.reflowPanel === "summary" ? 'aria-busy="true" title="กดเพื่อยกเลิก"' : (canUndoReflow("summary") ? 'title="กดอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม"' : 'title="จัดระเบียบการขึ้นบรรทัดโดยไม่เปลี่ยนคำ"')}>จัดหน้า</button>
           <button class="ghost-button" id="download-summary" type="button" ${disabledAttr("download-summary")}>ดาวน์โหลด .txt</button>
           <button class="ghost-button" id="clear-summary" type="button" ${disabledAttr("clear-summary")}>${canUndoSummaryClear ? "ยกเลิกล้างข้อความ" : "ล้างข้อความ"}</button>
         </div>
@@ -4925,6 +5133,7 @@ function bindEvents() {
       if (!segment || segment.status !== "ok") return;
       segment.text = String(element.innerText || "").trim();
       element.classList.toggle("is-empty", !segment.text);
+      clearReflowUndo("transcript");
       rebuildTranscriptDraftFromSegments();
       pruneSpellFixesFromCurrentText();
       refreshTranscriptActionButtons();
@@ -5297,6 +5506,9 @@ function bindEvents() {
       }
     });
   });
+  document.querySelector("#reflow-transcript")?.addEventListener("click", () => {
+    runReflow("transcript");
+  });
   document.querySelector("#copy-transcript")?.addEventListener("click", async () => {
     syncFormState();
     try {
@@ -5339,11 +5551,13 @@ function bindEvents() {
   document.querySelector("#summary-text")?.addEventListener("input", (event) => {
     const nextSummary = event.target.innerText;
     state.summary = nextSummary;
+    clearReflowUndo("summary");
     if (state.issueNotice?.source === "summary" && !state.summary.includes(state.issueNotice.word)) state.issueNotice = null;
     const hasText = Boolean(state.summary.trim());
     event.target.classList.toggle("is-empty", !hasText);
     document.querySelector("#copy-summary")?.toggleAttribute("disabled", !hasText);
     document.querySelector("#download-summary")?.toggleAttribute("disabled", !hasText);
+    document.querySelector("#reflow-summary")?.toggleAttribute("disabled", isControlDisabled("reflow-summary"));
     const clearSummary = document.querySelector("#clear-summary");
     if (clearSummary) {
       const canUndo = hasClearedSummary();
@@ -5418,6 +5632,9 @@ function bindEvents() {
       : `เปลี่ยน Gemini model เป็น ${getModelLabel(state.model)} แล้ว`;
     render();
     retryQuotaNoticeTask(retryAction);
+  });
+  document.querySelector("#reflow-summary")?.addEventListener("click", () => {
+    runReflow("summary");
   });
   document.querySelector("#copy-summary")?.addEventListener("click", async () => {
     syncFormState();
@@ -5531,6 +5748,18 @@ function bindEvents() {
 }
 
 document.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && String(event.key || "").toLowerCase() === "z" && !event.shiftKey && !event.altKey) {
+    if (canUndoReflow("summary")) {
+      event.preventDefault();
+      undoReflow("summary");
+      return;
+    }
+    if (canUndoReflow("transcript")) {
+      event.preventDefault();
+      undoReflow("transcript");
+      return;
+    }
+  }
   if (event.key !== "Escape") return;
   if (state.docPreview) {
     closeDocumentPreview();
