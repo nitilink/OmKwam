@@ -1,97 +1,105 @@
-# OmKwam v0.38b
+# OmKwam v0.39
 
-OmKwam v0.38b is a privacy-first experimental workspace for Thai testimony transcription. It can record or import audio, transcribe it with Gemini using the user's own API key, help review uncertain words, and draft a concise testimony summary for human review.
+OmKwam v0.39 เป็นพื้นที่ทดลองสำหรับถอดคำเบิกความภาษาไทย โดยคำนึงถึงความเป็นส่วนตัวเป็นหลัก ใช้บันทึกหรือนำเข้าไฟล์เสียง รูปภาพ และ PDF ถอดข้อความด้วย Gemini จาก API key ของผู้ใช้เอง ช่วยตรวจผู้พูดและคำผิด แล้วร่างคำเบิกความเพื่อให้คนตรวจทานอีกครั้ง
 
-OmKwam is part of the NitiLink project.
+OmKwam เป็นส่วนหนึ่งของโครงการ NitiLink
 
-Last updated: 5 Aug 2026, 14:55 ICT.
+อัปเดตล่าสุด: 10 พ.ย. 2026, 22:30 น. เวลาไทย
 
-## Experimental Notice
+## ข้อความสำหรับเวอร์ชันทดลอง
 
-OmKwam is a personal experimental project by the developer to study the feasibility of using AI to assist with audio transcription and testimony-summary drafting. It is not a system of any agency or organization, and it cannot replace human review. Users must inspect, edit, and take responsibility for any use of the generated output.
+OmKwam เป็นโปรเจกต์ทดลองส่วนตัวของผู้พัฒนา เพื่อศึกษาความเป็นไปได้ในการใช้ AI ช่วยถอดเสียงและร่างคำเบิกความ ไม่ใช่ระบบของหน่วยงานใด และทดแทนการตรวจทานโดยคนไม่ได้ ผู้ใช้ต้องตรวจ แก้ไข และรับผิดชอบผลที่นำไปใช้เอง
 
-## Key Features
+## ฟีเจอร์หลัก
 
-- Record audio from the microphone in the browser.
-- Upload audio files directly from the user's computer.
-- Play back and save the latest audio locally.
-- Transcribe testimony with Gemini using the user's own API key.
-- Highlight unclear or contextually suspicious words for review.
-- Draft testimony summaries from transcript text with built-in summary rules, limited case context, and a configurable dictionary.
-- Copy or download transcript and summary text.
-- Run as a static web app with no developer-operated backend.
+- บันทึกเสียงจากไมโครโฟนในเบราว์เซอร์
+- นำเข้าไฟล์เสียง รูปภาพ หรือ PDF จากเครื่องผู้ใช้ เลือกหลายรูปแล้วเรียงลำดับหรือครอบรูปได้ก่อนถอดข้อความ
+- ฟังทวนและบันทึกไฟล์เสียงล่าสุดไว้ในเครื่อง
+- ถอดข้อความด้วย Gemini โดยใช้ API key ของผู้ใช้เอง ทั้งไฟล์เสียง รูป และ PDF
+- ตรวจผู้พูด (ป้ายถาม/พยาน) และตรวจคำผิด แล้วไฮไลต์คำที่ควรทบทวน
+- ร่างคำเบิกความจากข้อความถอด โดยใช้กฎสรุป บริบทคดีจำกัด และพจนานุกรมที่ตั้งได้
+- คัดลอกหรือดาวน์โหลดข้อความถอดและคำสรุป
+- ทำงานเป็นเว็บสแตติก ไม่มีเซิร์ฟเวอร์ของนักพัฒนาอยู่ตรงกลาง
 
-## Privacy Model
+## โมเดลความเป็นส่วนตัว
 
-- OmKwam does not include a developer-operated backend, database, or proxy.
-- Audio, transcript text, summary text, and Gemini API keys are not sent to the developer.
-- Requests are sent from the user's browser directly to Gemini API with the API key entered by the user.
-- Settings are stored only in the user's browser when the user enables local persistence.
-- Users are responsible for evaluating Gemini's terms, data handling, risks, and generated outputs before use.
+- OmKwam ไม่มีแบ็กเอนด์ ฐานข้อมูล หรือพร็อกซีที่ผู้พัฒนาเป็นผู้ให้บริการ
+- เสียง ข้อความถอด คำสรุป และ Gemini API key ไม่ถูกส่งไปให้ผู้พัฒนา
+- คำขอถูกส่งจากเบราว์เซอร์ของผู้ใช้ตรงไปยัง Gemini API ด้วยคีย์ที่ผู้ใช้ใส่เอง
+- ค่าตั้งถูกเก็บเฉพาะในเบราว์เซอร์ของผู้ใช้ เมื่อผู้ใช้เปิดให้จำค่าไว้ในเครื่อง
+- ผู้ใช้ต้องพิจารณาข้อกำหนด การจัดการข้อมูล ความเสี่ยง และผลลัพธ์ของ Gemini ก่อนใช้งาน
 
-## Local Run
+## การรันในเครื่อง
 
-Install Node.js, then run:
+ติดตั้ง Node.js แล้วรัน:
 
 ```powershell
 node .\scripts\serve.mjs --port 5173
 ```
 
-Then open:
+จากนั้นเปิด:
 
 ```text
 http://127.0.0.1:5173/
 ```
 
-This repository currently has no build step. The app is served directly from `index.html` and `src/`.
+คลังนี้ยังไม่มีขั้นตอนบิลด์ แอปถูกเสิร์ฟตรงจาก `index.html` และ `src/`
 
-## Static Deploy
+## การติดตั้งแบบสแตติก
 
-For a static host such as GitHub Pages, Cloudflare Pages, Netlify, Vercel static hosting, or an ordinary web server, deploy:
+สำหรับโฮสต์สแตติก เช่น GitHub Pages, Cloudflare Pages, Netlify, Vercel หรือเว็บเซิร์ฟเวอร์ทั่วไป ให้ติดตั้ง:
 
 - `index.html`
 - `src/`
 
-The `scripts/serve.mjs` file is only a small local development server and is not required by static hosting.
+ไฟล์ `scripts/serve.mjs` เป็นเซิร์ฟเวอร์เล็ก ๆ สำหรับพัฒนาในเครื่องเท่านั้น ไม่ต้องใช้ตอนโฮสต์แบบสแตติก
 
-## Configuration
+เนื้อหาที่เอาขึ้นเว็บจริง (เช่น www.nitilink.com) มาจากชุดตัวเต็ม ไม่ใช่ชุดสาธารณะที่ตัดพรอมต์ออก
 
-Users need their own Gemini API key. The app can optionally store the key in the user's browser localStorage when the user enables key persistence.
+## การตั้งค่า
 
-Stored user-side settings are scoped to the current browser origin, for example `https://www.nitilink.com`. They are not sent to the developer:
+ผู้ใช้ต้องมี Gemini API key ของตนเอง แอปจะจำคีย์ใน localStorage ของเบราว์เซอร์ได้เมื่อผู้ใช้เปิดให้จำคีย์
 
-- API key: `omkwam.byok.apiKey`, stored only when the user enables key persistence.
-- Model: `omkwam.byok.model.2026-06-21-v2`.
-- Dictionary: `omkwam.byok.dictionary.current`.
-- Case Info: `omkwam.byok.caseInfo.2026-06-24-v1`.
-- Extra instructions: `omkwam.byok.instructions.2026-06-21-v4`.
+ค่าที่เก็บฝั่งผู้ใช้ยึดตามต้นทางของเว็บ เช่น `https://www.nitilink.com` และไม่ถูกส่งไปให้ผู้พัฒนา:
 
-The dictionary panel supports term replacement rules.
+- API key: `omkwam.byok.apiKey` เก็บเฉพาะเมื่อผู้ใช้เปิดให้จำคีย์
+- โมเดล: `omkwam.byok.model.2026-11-09-v3`
+- ชื่อโมเดลกำหนดเอง: `omkwam.byok.customModel.2026-11-09-v1` (เมื่อเลือก “กำหนดเอง”)
+- พจนานุกรม: `omkwam.byok.dictionary.v2`
+- ข้อมูลคดี: `omkwam.byok.caseInfo.2026-06-24-v1`
+- สวิตช์ตรวจผู้พูดอัตโนมัติ: `omkwam.autoSpeakerReview.v1`
+- สวิตช์ตรวจคำผิดอัตโนมัติ: `omkwam.autoSpellcheck.v1`
 
-The Case Info panel stores limited case context: preliminary facts, case documents, and proper names of related people, objects, or places. It is used only to help spelling and issue grouping; testimony summaries must still be based on witness answers in the transcript.
+แผงพจนานุกรมใช้กฎแทนคำได้
 
-## Public Source Notes
+แผงข้อมูลคดีเก็บบริบทจำกัด เช่น ข้อเท็จจริงเบื้องต้น เอกสารคดี และชื่อเฉพาะของคน วัตถุ หรือสถานที่ที่เกี่ยวข้อง ใช้ช่วยสะกดคำและจัดประเด็นเท่านั้น คำเบิกความต้องอิงคำตอบของพยานในข้อความถอดเป็นหลัก
 
-Note for this package: `src/prompts.js` has been redacted (prompt text removed) for public release. Export names, function signatures, inputs, and JSON output contracts are preserved for review. Restore the private prompt text before functional deployment.
+## หมายเหตุชุดซอร์สสาธารณะ
 
-The working static frontend contains the prompt text required for browser-side Gemini requests. If the app is deployed as a static frontend, users can inspect that prompt text in the served JavaScript.
+ในชุดที่เผยแพร่บน GitHub ไฟล์ `src/prompts.js` ถูกตัดข้อความพรอมต์ออก เหลือชื่อส่งออก ลายเซ็นฟังก์ชัน ข้อมูลที่พรอมต์ใช้ และรูปแบบ JSON ที่คาดจาก Gemini เพื่อให้ตรวจทานได้ ต้องใส่ข้อความพรอมต์ของชุดตัวเต็มกลับไปก่อนจึงจะใช้งานจริงได้
 
-For public GitHub distribution, sensitive or private prompt text may be redacted from a separate public-source package. A redacted public-source package is for transparency and review, not for direct functional deployment unless the private prompt text is restored by the maintainer.
+หน้าเว็บที่ใช้งานจริงมีข้อความพรอมต์ที่ต้องใช้ตอนเรียก Gemini จากเบราว์เซอร์ ถ้าติดตั้งแบบสแตติกจากชุดตัวเต็ม ผู้ใช้สามารถเปิดดูข้อความพรอมต์นั้นในจาวาสคริปต์ที่ถูกเสิร์ฟได้
 
-## Tutorial
+ชุดสาธารณะมีไว้เพื่อความโปร่งใสและการตรวจทาน ไม่ได้มีไว้ติดตั้งใช้งานโดยตรง เว้นแต่ผู้ดูแลจะใส่พรอมต์ชุดตัวเต็มกลับไป
 
-A user manual (Word document) is bundled in `resources/OmKwam User Manual v0.38b.docx` and can be downloaded from the in-app Tutorial dialog. Video tutorial content will be added after publication.
+## ไลเซนส์ของ pdf.js
 
-## Contact
+การเปิดไฟล์ PDF ในเบราว์เซอร์ใช้ไลบรารี pdf.js ของ Mozilla ซึ่งอยู่ที่ `src/vendor/pdfjs/` (ไฟล์ `pdf.min.js` และ `pdf.worker.min.js`) ใช้สัญญาอนุญาต Apache License 2.0 รายละเอียดอยู่ใน `src/vendor/pdfjs/LICENSE` และ `src/vendor/pdfjs/NOTICE.txt`
 
-Developer: Sayan Sajai
+## คู่มือการใช้งาน
 
-Email: nitilink.app@gmail.com
+คู่มือผู้ใช้ (ไฟล์ Word) อยู่ใน `src/assets/OmKwam User Manual v0.38b.docx` และดาวน์โหลดได้จากกล่อง Tutorial ในแอป เนื้อหาวิดีโอจะเพิ่มหลังเผยแพร่
 
-## Use Notice
+## ติดต่อ
 
-Free for personal and public-interest use. Commercial use is prohibited.
+ผู้พัฒนา: Sayan Sajai
 
-## License
+อีเมล: nitilink.app@gmail.com
 
-License information will be added before public release.
+## ข้อปฏิบัติในการใช้
+
+ใช้ได้ฟรีสำหรับงานส่วนตัวและประโยชน์สาธารณะ ห้ามใช้เพื่อการค้า
+
+## สัญญาอนุญาต
+
+ข้อมูลสัญญาอนุญาตของ OmKwam จะเพิ่มก่อนการเผยแพร่สาธารณะ

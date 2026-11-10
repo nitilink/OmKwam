@@ -1,7 +1,7 @@
 // All Gemini prompt text lives in this file, and only in this file.
 //
 // ============================================================================
-// PUBLIC-SOURCE REDACTED PACKAGE — OmKwam v0.38b
+// PUBLIC-SOURCE REDACTED PACKAGE — OmKwam v0.39
 // ----------------------------------------------------------------------------
 // The actual Gemini prompt text has been REDACTED from this public package for
 // transparency and review only. This file is intentionally NOT functional as-is:
@@ -35,7 +35,16 @@ export function buildRawTranscriptionPrompt(chunk = null) {
   return REDACTED;
 }
 
-// Second pass: re-checks speaker labels, Thai word spacing, multi-question lines.
+// Transcribes a document image (a photo/scan or one PDF page rendered as an
+// image) into unedited raw text. Must not force ถาม/พยาน line labels.
+// Uses: page (index/count) when a document was split into pages client-side.
+export function buildDocumentTranscriptionPrompt(page = null) {
+  void page;
+  return REDACTED;
+}
+
+// Second pass: inserts or re-checks speaker labels, Thai word spacing,
+// multi-question lines, and document headers. Must keep original words.
 // Uses: transcriptText
 export function buildSpeakerReviewPrompt(transcriptText) {
   void transcriptText;
@@ -58,9 +67,18 @@ export function buildSummaryPrompt({ dictionary, caseInfoText, instructions, tra
 // Uses: summaryText
 // Returns (from Gemini) JSON:
 //   { "issues": [ { "text": string, "isUnclear": boolean,
-//       "isOutofContext": boolean, "issueDescription": string,
-//       "suggestions": string[] } ] }
+//     "isOutofContext": boolean, "issueDescription": string,
+//     "suggestions": string[] } ] }
 export function buildSummaryIssueAnalysisPrompt(summaryText) {
   void summaryText;
+  return REDACTED;
+}
+
+// Checks a transcript or document text for clear Thai spelling mistakes only.
+// Uses: transcriptText
+// Returns (from Gemini) JSON:
+//   { "corrections": [ { "original": string, "corrected": string } ] }
+export function buildSpellcheckPrompt(transcriptText) {
+  void transcriptText;
   return REDACTED;
 }

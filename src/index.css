@@ -373,7 +373,7 @@ main {
 
 .audio-grid {
   display: grid;
-  grid-template-columns: minmax(210px, 1fr) minmax(300px, 1fr) minmax(460px, 2fr);
+  grid-template-columns: minmax(200px, 0.9fr) minmax(360px, 1.2fr) minmax(400px, 1.9fr);
   gap: 10px;
   align-items: stretch;
 }
@@ -497,17 +497,17 @@ main {
 }
 
 /* A handful of ghost-buttons are the primary trigger for their card
-   (ถอดเสียง, เล่นเสียง, บันทึกเสียง, ตรวจสอบผู้พูด) - color them the same
+   (ถอดเสียง, เล่นเสียง, บันทึกเสียง, ตรวจผู้พูด, ถ่ายภาพ) - color them the same
    blue as the other primary actions whenever they're actually clickable,
    instead of always looking dark regardless of state. */
-.ghost-button:not(:disabled):is(#transcribe-last-audio, #play-audio, #download-audio, #review-speakers) {
+.ghost-button:not(:disabled):is(#transcribe-last-audio, #play-audio, #download-audio, #review-speakers, #start-camera) {
   border-color: var(--primary-border);
   background: var(--primary-bg);
   color: var(--primary-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.ghost-button:hover:not(:disabled):is(#transcribe-last-audio, #play-audio, #download-audio, #review-speakers) {
+.ghost-button:hover:not(:disabled):is(#transcribe-last-audio, #play-audio, #download-audio, #review-speakers, #start-camera) {
   border-color: var(--primary-border-hover);
   background: var(--primary-bg-hover);
   color: var(--primary-text-hover);
@@ -654,6 +654,29 @@ main {
   white-space: nowrap;
 }
 
+.player-card.is-empty .audio-card-text {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.player-card.is-empty .latest-audio {
+  flex: 0 1 auto;
+}
+
+.source-empty-hint {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
 .audio-player {
   min-width: 0;
   width: 100%;
@@ -667,19 +690,162 @@ main {
   font-size: 10px;
 }
 
-.audio-player input[type="range"] {
+.audio-seek-wrap {
+  /* Thumb diameter ~14px: markers sit on the real track between thumb centers. */
+  --seek-thumb: 14px;
+  --seek-track-h: 4px;
+  position: relative;
   min-width: 0;
   width: 100%;
-  min-height: 16px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+}
+
+.audio-seek-markers {
+  /* This layer IS the visible track (native track is transparent). */
+  position: absolute;
+  left: calc(var(--seek-thumb) / 2);
+  right: calc(var(--seek-thumb) / 2);
+  top: 50%;
+  height: var(--seek-track-h);
+  margin-top: calc(var(--seek-track-h) / -2);
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.55);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.audio-seek-tick {
+  position: absolute;
+  top: -3px;
+  height: calc(var(--seek-track-h) + 6px);
+  width: 1.5px;
+  margin-left: -0.75px;
+  border-radius: 1px;
+  background: rgba(226, 232, 240, 0.8);
+  opacity: 0.9;
+}
+
+.audio-seek-tick.is-failed {
+  background: rgba(254, 202, 202, 0.95);
+}
+
+.audio-seek-fail-span {
+  position: absolute;
+  top: 0;
+  height: 100%; /* same 4px band as the custom track behind it */
+  min-height: 0;
+  max-height: none;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
+  font-size: 0;
+  border-radius: 999px;
+  background: #ef4444;
+  opacity: 0.72;
+  box-shadow: none;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.audio-seek-fail-span:hover {
+  opacity: 0.9;
+}
+
+.audio-seek-fail-span:focus-visible {
+  outline: 1px solid rgba(254, 202, 202, 0.95);
+  outline-offset: 2px;
+}
+
+.audio-player input[type="range"] {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  width: 100%;
+  height: 18px;
+  margin: 0;
   padding: 0;
   border: 0;
+  background: transparent;
   accent-color: var(--blue);
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .audio-player input[type="range"]:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.audio-player input[type="range"]::-webkit-slider-runnable-track {
+  height: var(--seek-track-h, 4px);
+  border-radius: 999px;
+  background: transparent;
+}
+
+.audio-player input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--seek-thumb, 14px);
+  height: var(--seek-thumb, 14px);
+  margin-top: calc((var(--seek-track-h, 4px) - var(--seek-thumb, 14px)) / 2);
+  border-radius: 50%;
+  border: 0;
+  background: #93c5fd;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35);
+  cursor: pointer;
+}
+
+.audio-player input[type="range"]::-moz-range-track {
+  height: var(--seek-track-h, 4px);
+  border-radius: 999px;
+  background: transparent;
+  border: 0;
+}
+
+.audio-player input[type="range"]::-moz-range-thumb {
+  width: var(--seek-thumb, 14px);
+  height: var(--seek-thumb, 14px);
+  border-radius: 50%;
+  border: 0;
+  background: #93c5fd;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35);
+  cursor: pointer;
+}
+
+/* Single clean floating button — reset global `button` chrome so it is not a double pill. */
+button.audio-chunk-retry-pop {
+  all: unset;
+  position: fixed;
+  z-index: 10000;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 6px 11px;
+  min-height: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: #0b1220;
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+button.audio-chunk-retry-pop:hover {
+  border-color: rgba(147, 197, 253, 0.75);
+  color: #eff6ff;
+  background: #111827;
 }
 
 .workspace {
@@ -813,15 +979,218 @@ main {
   flex-wrap: wrap;
 }
 
-/* The two text buttons in a panel head are sized as a matched pair.
-   #review-speakers used to inherit the global button size (36px tall, 12px
-   text, 13px padding) while its neighbour was explicitly 32px/11px/12px, so it
-   sat noticeably taller and heavier than everything around it.
-   The shared min-width is set by the longest label either button can show
-   ("เอาป้ายผู้พูดออก"), so neither changes size when its label is swapped -
-   ตรวจสอบผู้พูด <-> เอาป้ายผู้พูดออก <-> หยุดตรวจสอบ and
-   สรุปความ <-> หยุดสรุปความ all render at the same width. nowrap keeps a long
-   label on one line, which would otherwise change the button's height too. */
+/* Transcript toolbar: three equal-width 32px pills (ตรวจผู้พูด+switch,
+   ตรวจคำผิด+switch, สรุปความ) plus a fixed expand icon, always one row.
+   Widths come from the grid, not the label, so a longer running label
+   cannot widen a pill or shove the others. */
+.transcript-panel .panel-head-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  width: min(100%, 22.75rem);
+}
+
+.transcript-panel .summarize-head-button,
+.transcript-panel .panel-head-actions #review-speakers,
+.transcript-panel .panel-head-actions #spellcheck,
+.transcript-panel .panel-head-actions #summarize {
+  min-height: 32px;
+  height: 32px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transcript-panel .fullscreen-action {
+  flex: 0 0 30px;
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  justify-self: end;
+}
+
+/* Button + auto-toggle as one seamless pill. Chrome (border, fill, shadow)
+   lives on the wrapper so there is no vertical seam between the label and
+   the switch. The two click targets stay separate: the label runs the
+   action, the switch arms auto. */
+.transcript-panel .head-auto-control {
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, #303642 48%, var(--panel-2));
+  background: color-mix(in srgb, #171b21 48%, var(--panel-2));
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.transcript-panel .head-auto-control:has(#review-speakers.ghost-button:disabled) {
+  background: color-mix(in srgb, #151a21 48%, var(--panel-2));
+}
+
+.transcript-panel .head-auto-control:has(#spellcheck:not(:disabled)),
+.transcript-panel .head-auto-control:has(#review-speakers:not(:disabled)) {
+  border-color: var(--primary-border);
+  background: var(--primary-bg);
+  color: var(--primary-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.transcript-panel .head-auto-control:has(#spellcheck:not(:disabled)):has(#spellcheck:hover, .head-auto-toggle:hover),
+.transcript-panel .head-auto-control:has(#review-speakers:not(:disabled)):has(#review-speakers:hover, .head-auto-toggle:hover) {
+  border-color: var(--primary-border-hover);
+  background: var(--primary-bg-hover);
+  color: var(--primary-text-hover);
+}
+
+.transcript-panel .head-auto-control:has(#spellcheck:disabled):has(.head-auto-toggle:hover),
+.transcript-panel .head-auto-control:has(#review-speakers:disabled):has(.head-auto-toggle:hover) {
+  border-color: color-mix(in srgb, #48515f 48%, var(--panel-2));
+  background: color-mix(in srgb, #202630 48%, var(--panel-2));
+}
+
+.transcript-panel .head-auto-control #spellcheck,
+.transcript-panel .head-auto-control #review-speakers {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-right: 6px;
+}
+
+.transcript-panel .head-auto-control #spellcheck:disabled,
+.transcript-panel .head-auto-control #review-speakers:disabled,
+.transcript-panel .head-auto-control #spellcheck:not(:disabled),
+.transcript-panel .head-auto-control #review-speakers:not(:disabled),
+.transcript-panel .head-auto-control #spellcheck:hover,
+.transcript-panel .head-auto-control #review-speakers:hover {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.transcript-panel .head-auto-control #spellcheck:disabled,
+.transcript-panel .head-auto-control #review-speakers:disabled {
+  color: color-mix(in srgb, #eef0f3 48%, var(--panel-2));
+  cursor: not-allowed;
+}
+
+.transcript-panel .head-auto-control:has(#spellcheck:not(:disabled)) #spellcheck,
+.transcript-panel .head-auto-control:has(#review-speakers:not(:disabled)) #review-speakers {
+  color: inherit;
+  cursor: pointer;
+}
+
+.transcript-panel .head-auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-height: 32px;
+  width: 34px;
+  min-width: 34px;
+  max-width: 34px;
+  flex: 0 0 34px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.transcript-panel .head-auto-toggle:hover:not(:disabled) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Keep the original toolbar label while an action runs; just dim the pill
+   slightly. Clicking the button still cancels the in-flight request. */
+.transcript-panel .head-auto-control:has([aria-busy="true"]),
+.transcript-panel #summarize[aria-busy="true"] {
+  opacity: 0.72;
+}
+
+/* Press the combined control as one unit. */
+.transcript-panel .head-auto-control #spellcheck:active:not(:disabled),
+.transcript-panel .head-auto-control #review-speakers:active:not(:disabled),
+.transcript-panel .head-auto-toggle:active {
+  transform: none;
+}
+
+.transcript-panel .head-auto-control:has(#spellcheck:not(:disabled):active),
+.transcript-panel .head-auto-control:has(#review-speakers:not(:disabled):active),
+.transcript-panel .head-auto-control:has(#spellcheck:not(:disabled)):has(.head-auto-toggle:active),
+.transcript-panel .head-auto-control:has(#review-speakers:not(:disabled)):has(.head-auto-toggle:active),
+.transcript-panel .head-auto-control:has(:is(#spellcheck, #review-speakers):disabled):has(.head-auto-toggle:active) {
+  transform: translateY(1px);
+}
+
+/* Keyboard focus rings the whole segment, not just one half. */
+.transcript-panel .head-auto-control #spellcheck:focus-visible,
+.transcript-panel .head-auto-control #review-speakers:focus-visible,
+.transcript-panel .head-auto-toggle:focus-visible {
+  outline: none;
+}
+
+.transcript-panel .head-auto-control:has(:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.transcript-panel .head-auto-switch {
+  position: relative;
+  width: 22px;
+  height: 13px;
+  flex: 0 0 22px;
+  border-radius: 999px;
+  background: #2a3340;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.transcript-panel .head-auto-switch::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #d5dee8;
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.transcript-panel .head-auto-control.is-auto-on .head-auto-switch {
+  background: #7dd3fc;
+  box-shadow: none;
+}
+
+.transcript-panel .head-auto-control.is-auto-on .head-auto-switch::after {
+  transform: translateX(9px);
+  background: #0b1c28;
+}
+
+
+/* Summary head still has only the expand icon; leave its default button sizing. */
 .summarize-head-button,
 .panel-head-actions #review-speakers {
   min-height: 32px;
@@ -921,14 +1290,39 @@ main {
   color: rgba(216, 221, 229, 0.38);
 }
 
-.raw-unclear {
+/* Shared subtle gold mark: unclear words, summary issue words, and typo fixes
+   all use the same highlight so ตรวจคำผิด is no stronger than สรุปความ. */
+.raw-unclear,
+.word-issue,
+.spell-fix {
   padding: 0 3px;
   border: 1px solid rgba(235, 209, 130, 0.32);
   border-radius: 4px;
   background: rgba(235, 209, 130, 0.085);
   color: #efda8e;
+}
+
+.raw-unclear,
+.spell-fix {
   cursor: pointer;
 }
+
+.spell-fix {
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+  display: inline;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.spell-fix:hover,
+.spell-fix:focus {
+  background: rgba(235, 209, 130, 0.16);
+  border-color: rgba(235, 209, 130, 0.5);
+  outline: none;
+}
+
 
 
 .turn-line {
@@ -984,23 +1378,11 @@ main {
 .word-issue {
   min-height: 0;
   display: inline;
-  padding: 0 3px;
-  border: 1px solid rgba(235, 209, 130, 0.32);
-  border-radius: 4px;
-  background: rgba(235, 209, 130, 0.085);
-  color: #efda8e;
   font: inherit;
   text-align: inherit;
   vertical-align: baseline;
   cursor: help;
   user-select: text;
-}
-
-.word-issue.unclear,
-.word-issue.context {
-  border-color: rgba(235, 209, 130, 0.32);
-  background: rgba(235, 209, 130, 0.085);
-  color: #efda8e;
 }
 
 .issue-popover-backdrop {
@@ -1673,14 +2055,8 @@ select {
 }
 
 @media (max-width: 720px) {
-  /* On a phone the transcript head cannot fit its heading plus two 124px
-     buttons and the fullscreen icon on one line, so the buttons wrapped and
-     left the heading floating against a ragged two-line block.
-     Give the heading a line of its own and let the pair share the width below
-     it: flex-basis 0 keeps them exactly equal to each other (the point of the
-     fixed width on desktop) while letting them shrink to fit any screen.
-     Scoped to the transcript panel on purpose - the summary head holds only the
-     fullscreen icon, which should stay on the heading's line. */
+  /* Heading on its own row; the three text buttons and the expand icon share
+     the row below, shrinking equally so labels stay on one line at 390/360. */
   .transcript-panel .panel-head {
     flex-wrap: wrap;
     row-gap: 8px;
@@ -1688,13 +2064,16 @@ select {
 
   .transcript-panel .panel-head-actions {
     flex: 1 1 100%;
-    flex-wrap: nowrap;
+    width: 100%;
+    gap: 5px;
   }
 
-  .transcript-panel .panel-head-actions #review-speakers,
-  .transcript-panel .panel-head-actions .summarize-head-button {
-    flex: 1 1 0;
-    min-width: 0;
+  .transcript-panel .panel-head-actions .summarize-head-button,
+  .transcript-panel .panel-head-actions #summarize,
+  .transcript-panel .panel-head-actions .head-auto-control #spellcheck,
+  .transcript-panel .panel-head-actions .head-auto-control #review-speakers {
+    padding: 0 5px;
+    font-size: 10.5px;
   }
 
   .transcript-panel .fullscreen-action {
@@ -1826,6 +2205,18 @@ select {
     justify-content: center;
   }
 
+  .audio-card.player-card.is-empty {
+    min-height: 56px;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .player-card.is-empty .audio-card-text {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
   .audio-actions {
     min-width: 0;
     flex-wrap: nowrap;
@@ -1889,6 +2280,15 @@ select {
 }
 
 @media (max-width: 380px) {
+  .transcript-panel .panel-head-actions .summarize-head-button,
+  .transcript-panel .panel-head-actions .head-auto-control #spellcheck,
+  .transcript-panel .panel-head-actions .head-auto-control #review-speakers {
+    padding: 0 5px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 380px) {
   .audio-deck {
     padding-inline: 8px;
   }
@@ -1904,4 +2304,539 @@ select {
     padding: 0 8px;
     font-size: 10.5px;
   }
+}
+
+
+/* --- v0.39 progressive chunk UI + custom model --- */
+.custom-model-field.is-hidden {
+  display: none;
+}
+
+.chunk-failure-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 4px 8px;
+  min-height: 28px;
+  border: 1px solid rgba(180, 35, 24, 0.55);
+  border-radius: 6px;
+  background: rgba(180, 35, 24, 0.10);
+  color: #ffc9c3;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.chunk-failure-banner .ghost-button,
+.chunk-failed-box .ghost-button {
+  min-height: 24px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 10.5px;
+  border-radius: 5px;
+  flex: 0 0 auto;
+}
+
+.transcript-segments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.chunk-failed-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid rgba(180, 35, 24, 0.55);
+  border-radius: 6px;
+  background: rgba(180, 35, 24, 0.10);
+  padding: 4px 8px;
+  min-height: 28px;
+  color: #ffc9c3;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.chunk-failed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+}
+
+.chunk-failed-head strong {
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.chunk-status-box {
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  padding: 4px 8px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.chunk-status-box.is-transcribing {
+  border-color: rgba(96, 165, 250, 0.45);
+  background: rgba(37, 99, 235, 0.10);
+  color: #bfdbfe;
+}
+
+.chunk-ok-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.chunk-ok-box + .chunk-ok-box {
+  margin-top: 0.35rem;
+}
+
+.chunk-segment-editor {
+  min-height: 3rem;
+}
+
+
+/* Document / image import: keep the player card the same height as audio,
+   but put the filmstrip beside the title so thumbs can use the full content height. */
+.player-card.is-document .audio-card-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  align-self: stretch;
+}
+
+.player-card.is-document .latest-audio {
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  max-width: 42%;
+}
+
+.player-card.is-document .latest-audio strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-filmstrip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 56px;
+  margin-top: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1px 0;
+  scrollbar-width: thin;
+}
+
+.doc-filmstrip-empty {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.doc-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  height: 54px;
+  width: auto;
+  border: 1px solid #64748b;
+  border-radius: 5px;
+  background: #fff;
+  overflow: visible;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
+  color-scheme: only light;
+  forced-color-adjust: none;
+}
+
+.doc-thumb.is-failed {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.85);
+}
+
+.doc-thumb.is-pending,
+.doc-thumb.is-transcribing {
+  border-color: #64748b;
+}
+
+.doc-thumb.is-placeholder {
+  background: rgba(148, 163, 184, 0.12);
+  border: 1.5px dashed #94a3b8;
+  box-shadow: none;
+  cursor: grabbing;
+  pointer-events: none;
+}
+
+.doc-thumb.is-placeholder img,
+.doc-thumb.is-placeholder .doc-thumb-fallback,
+.doc-thumb.is-placeholder .doc-thumb-num,
+.doc-thumb.is-placeholder .doc-thumb-remove {
+  visibility: hidden;
+}
+
+.doc-thumb-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9000;
+  margin: 0;
+  pointer-events: none;
+  opacity: 0.7;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(56, 189, 248, 0.55);
+  cursor: grabbing;
+  transform-origin: top left;
+  transform: translate(-1000px, -1000px);
+}
+
+body.is-doc-reordering {
+  user-select: none;
+  cursor: grabbing;
+  touch-action: none;
+}
+
+body.is-doc-reordering .doc-filmstrip,
+body.is-doc-reordering .doc-thumb {
+  touch-action: none;
+  cursor: grabbing;
+}
+
+.doc-thumb img {
+  display: block;
+  height: 54px;
+  width: auto;
+  max-width: 80px;
+  object-fit: contain;
+  object-position: top center;
+  pointer-events: none;
+  border-radius: 4px;
+  background: #fff;
+  color-scheme: only light;
+  forced-color-adjust: none;
+}
+
+.doc-thumb-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 54px;
+  width: 40px;
+  color: #334155;
+  background: #e2e8f0;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-align: center;
+  padding: 2px;
+  line-height: 1.1;
+  border-radius: 4px;
+}
+
+.doc-thumb-num {
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 13px;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+/* Must beat `.audio-deck button` (min 90x32) or the X becomes a dark overlay. */
+.audio-deck button.doc-thumb-remove {
+  all: unset;
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 2;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.audio-deck button.doc-thumb-remove:hover {
+  background: #9f1239;
+  color: #fff;
+}
+
+/* Keep the X out of the way of thumb clicks on a pointer device;
+   always visible on touch, where there is no hover. */
+@media (hover: hover) and (pointer: fine) {
+  .audio-deck button.doc-thumb-remove {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .doc-thumb:hover button.doc-thumb-remove,
+  .doc-thumb:focus-within button.doc-thumb-remove {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.doc-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.doc-preview-dialog {
+  max-width: min(1100px, 96vw);
+  max-height: 96vh;
+  margin: 0;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #0b0d10;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.doc-preview-dialog img {
+  display: block;
+  max-width: min(96vw, 1100px);
+  max-height: calc(96vh - 116px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  background: #111827;
+}
+
+.doc-crop-bar,
+.doc-preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  flex: 0 0 auto;
+  background: #0b0d10;
+}
+
+.doc-crop-modes,
+.doc-crop-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.doc-crop-modes button,
+.doc-crop-actions button {
+  min-height: 32px;
+  height: 32px;
+  min-width: 0;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+  color: #dce3ec;
+  background: #151a21;
+  border: 1px solid #2a3440;
+  border-radius: 8px;
+}
+
+.doc-crop-modes button.is-active,
+.doc-crop-actions #doc-crop-apply:not(:disabled) {
+  border-color: var(--primary-border);
+  background: var(--primary-bg);
+  color: var(--primary-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.doc-crop-modes button:disabled,
+.doc-crop-actions button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.doc-crop-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  background: #111827;
+  touch-action: none;
+  user-select: none;
+}
+
+.doc-crop-stage img {
+  max-width: min(96vw, 1100px);
+  max-height: calc(96vh - 116px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.doc-crop-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: auto;
+  touch-action: none;
+  overflow: visible;
+  z-index: 2;
+}
+
+.doc-crop-overlay .doc-crop-veil {
+  fill: rgba(0, 0, 0, 0.55);
+  fill-rule: evenodd;
+  pointer-events: none;
+}
+
+.doc-crop-overlay .doc-crop-outline {
+  fill: none !important;
+  fill-opacity: 0;
+  stroke: #7dd3fc;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.doc-crop-overlay .doc-crop-handle {
+  fill: #e2e8f0;
+  stroke: #0ea5e9;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+body.is-doc-cropping {
+  user-select: none;
+  cursor: grabbing;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.doc-preview-caption {
+  padding: 0;
+  color: #cbd5e1;
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.doc-preview-footer .doc-preview-caption {
+  display: none;
+}
+
+.doc-preview-fallback {
+  padding: 40px 24px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .doc-preview-backdrop {
+    padding: 8px;
+  }
+
+  .doc-preview-dialog {
+    max-width: 100%;
+    max-height: calc(100vh - 16px);
+    width: 100%;
+  }
+
+  .doc-preview-dialog img,
+  .doc-crop-stage img {
+    max-width: 100%;
+    max-height: calc(100vh - 132px);
+  }
+
+  .doc-crop-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .doc-crop-actions button {
+    flex: 1 1 0;
+    padding: 0 6px;
+  }
+
+  .doc-preview-footer {
+    flex-wrap: wrap;
+  }
+}
+
+.record-card .audio-actions #start-recording,
+.record-card .audio-actions #start-camera,
+.import-card .audio-actions button,
+.import-card .audio-actions .file-button {
+  min-width: 0;
+  padding: 0 9px;
+}
+
+.import-card h2 {
+  white-space: normal;
+  line-height: 1.25;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+@media (min-width: 1101px) {
+  .import-card h2 {
+    white-space: nowrap;
+  }
+}
+
+#camera-capture {
+  display: none;
 }

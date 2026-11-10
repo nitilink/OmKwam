@@ -1,0 +1,4 @@
+Mozilla PDF.js (pdfjs-dist 4.10.38), Apache License 2.0.
+Vendored locally so the app does not load this library from a CDN at runtime.
+See LICENSE in this folder.
+https://github.com/mozilla/pdf.js

@@ -4,8 +4,8 @@
 // No UI/state mutation happens here either, beyond reading the API key/model
 // the user configured.
 
-import { state, DEFAULT_MODEL } from "./state.js";
-import { buildNoCacheDirective } from "./prompts.js";
+import { state, DEFAULT_MODEL, getEffectiveModel } from "./state.js?v=0.39";
+import { buildNoCacheDirective } from "./prompts.js?v=0.39";
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_UPLOAD_ENDPOINT = "https://generativelanguage.googleapis.com/upload/v1beta/files";
@@ -104,7 +104,7 @@ export async function callGemini(parts, responseMimeType, options = {}) {
   const apiKey = state.apiKey.trim();
   if (!apiKey) throw new Error("กรุณาใส่ Gemini API key ก่อนใช้งาน");
 
-  const model = encodeURIComponent(state.model.trim() || DEFAULT_MODEL);
+  const model = encodeURIComponent(getEffectiveModel());
   const requestId = options.requestId || makeRequestId("gemini");
   const requestParts = [...parts, { text: buildNoCacheDirective(requestId) }];
   throwIfCancelled(options.signal);
@@ -121,6 +121,9 @@ export async function callGemini(parts, responseMimeType, options = {}) {
       generationConfig: {
         temperature: 0.1,
         responseMimeType,
+        // Raise the ceiling so long court-style summaries are less likely to be
+        // truncated silently at the API default output limit.
+        maxOutputTokens: 65536,
       },
     }),
   });
@@ -155,6 +158,41 @@ export async function verifyApiKey(apiKeyValue = state.apiKey, options = {}) {
   // A rate-limited key is still a valid key - don't scare the user off it.
   if (response.status === 429) return { ok: true, reason: "quota", message };
   return { ok: false, reason: response.status === 400 || response.status === 401 || response.status === 403 ? "invalid" : "error", message };
+}
+
+
+// Returns model ids the current API key can see (e.g. "models/gemini-3.8-flash").
+// Used to soft-validate a user-typed custom model id after key verification.
+export async function listGeminiModelIds(apiKeyValue = state.apiKey, options = {}) {
+  const apiKey = String(apiKeyValue || "").trim();
+  if (!apiKey) return [];
+  const ids = [];
+  let pageToken = "";
+  // Cap pages so a huge catalog cannot hang the settings UI.
+  for (let page = 0; page < 10; page += 1) {
+    const url = new URL(GEMINI_ENDPOINT);
+    url.searchParams.set("pageSize", "100");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      signal: options.signal,
+      headers: { "x-goog-api-key": apiKey },
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw makeGeminiError(payload?.error?.message || `Gemini models list error ${response.status}`, response.status);
+    }
+    const payload = await response.json().catch(() => ({}));
+    for (const model of payload.models || []) {
+      const name = String(model?.name || "");
+      const id = name.includes("/") ? name.split("/").pop() : name;
+      if (id) ids.push(id);
+    }
+    pageToken = String(payload.nextPageToken || "");
+    if (!pageToken) break;
+  }
+  return ids;
 }
 
 export async function getGeminiFileStatus(fileName, options = {}) {

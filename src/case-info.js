@@ -3,7 +3,7 @@
 // group issues correctly. This module owns its storage key, shape, and the two
 // text formats it's rendered as: a compact prompt block and a plain export.
 
-import { readStorage, writeStorage } from "./storage.js";
+import { readStorage, writeStorage } from "./storage.js?v=0.39";
 
 export const CASE_INFO_STORAGE_KEY = "omkwam.byok.caseInfo.2026-06-24-v1";
 

@@ -4,35 +4,25 @@
 // Two independent improvements live here:
 //
 // 1. Chunking - long recordings are split into shorter pieces before being
-//    sent to Gemini, one request per piece. A single multi-hour request is
-//    more likely to time out, get truncated, or have Gemini silently drop or
-//    hallucinate parts of the middle of the recording; several short requests
-//    are each easier for the model to fully process. Cuts are placed at the
-//    quietest point near each target boundary (a pause between sentences)
-//    instead of at a fixed time, so a chunk boundary should not land in the
-//    middle of a word.
+//    sent to Gemini, one request per piece. Cuts are placed at the quietest
+//    point near each target boundary instead of at a fixed time.
 //
-// 2. Gain boost - if a clip (or one chunk of it) is quiet, its samples are
-//    scaled up before sending, similar to a "normalize volume" pass in audio
-//    editing software. This directly targets the "เสียงเบา" (quiet audio)
-//    complaint - Gemini has an easier time transcribing audio that isn't
-//    barely above the noise floor.
+// 2. Gain boost - quiet clips/chunks are scaled up before sending.
 //
-// Both steps also downsample to 16kHz mono, which is more than enough for
-// speech and keeps re-encoded chunks small (comfortably under the inline
-// request size limit even for long source recordings).
-//
-// If the browser can't decode the audio (unsupported codec, corrupt file,
-// etc.), everything here fails soft: the original file is sent untouched,
-// exactly like before this feature existed.
+// Memory: planAudioChunks() only records sample boundaries (no WAVs are
+// built up front). buildChunkAudioBlob() encodes ONE chunk at a time; the
+// caller sends it and drops it before the next chunk, so we never hold every
+// WAV in memory together. During a full run the caller decodes the source once
+// (decodeAudioSource) and passes it in; for a single-chunk retry the source is
+// re-decoded and re-sliced, then released.
 
-const CHUNK_TRIGGER_SECONDS = 6 * 60; // only start chunking past this length
-const CHUNK_TARGET_SECONDS = 5 * 60; // aim for ~5 minute pieces
-const CHUNK_SEARCH_WINDOW_SECONDS = 15; // look this far around the target point for a quiet spot to cut
-const CHUNK_MIN_TAIL_SECONDS = 45; // never leave a trailing sliver shorter than this
-const GAIN_BOOST_PEAK_THRESHOLD = 0.5; // peak sample amplitude below this counts as "quiet"
+const CHUNK_TRIGGER_SECONDS = 6 * 60;
+const CHUNK_TARGET_SECONDS = 5 * 60;
+const CHUNK_SEARCH_WINDOW_SECONDS = 15;
+const CHUNK_MIN_TAIL_SECONDS = 45;
+const GAIN_BOOST_PEAK_THRESHOLD = 0.5;
 const GAIN_BOOST_TARGET_PEAK = 0.9;
-const GAIN_BOOST_MAX_MULTIPLIER = 8; // cap so we don't just amplify noise floor on near-silent clips
+const GAIN_BOOST_MAX_MULTIPLIER = 8;
 const TARGET_SAMPLE_RATE = 16000;
 
 function getAudioContextClass() {
@@ -41,6 +31,10 @@ function getAudioContextClass() {
 
 function getOfflineAudioContextClass() {
   return window.OfflineAudioContext || window.webkitOfflineAudioContext || null;
+}
+
+export async function decodeAudioSource(blob) {
+  return decodeAudioBlob(blob);
 }
 
 async function decodeAudioBlob(blob) {
@@ -86,11 +80,8 @@ function computeGainMultiplier(buffer) {
   return Math.min(GAIN_BOOST_TARGET_PEAK / peak, GAIN_BOOST_MAX_MULTIPLIER);
 }
 
-// Finds the sample index nearest `targetSeconds` where short-term volume is
-// lowest, searching only within +/- CHUNK_SEARCH_WINDOW_SECONDS, so a cut
-// lands in a natural pause instead of mid-word.
 function findQuietSplitSample(mono, sampleRate, targetSeconds) {
-  const windowSize = Math.max(1, Math.round(sampleRate * 0.05)); // ~50ms
+  const windowSize = Math.max(1, Math.round(sampleRate * 0.05));
   const centerSample = Math.round(targetSeconds * sampleRate);
   const searchRadius = Math.round(CHUNK_SEARCH_WINDOW_SECONDS * sampleRate);
   const start = Math.max(windowSize, centerSample - searchRadius);
@@ -114,9 +105,6 @@ function findQuietSplitSample(mono, sampleRate, targetSeconds) {
   return bestSample;
 }
 
-// Returns sample-index boundaries (always starting at 0 and ending at
-// buffer.length). Two entries means "don't chunk"; more than two means the
-// audio was split at `boundaries.length - 1` quiet points.
 function computeChunkBoundarySamples(buffer) {
   const duration = buffer.duration;
   if (duration <= CHUNK_TRIGGER_SECONDS) return [0, buffer.length];
@@ -147,8 +135,6 @@ function sliceBuffer(buffer, startSample, endSample) {
   return sliced;
 }
 
-// Renders `buffer` down to mono at TARGET_SAMPLE_RATE using an
-// OfflineAudioContext, which also handles any needed resampling.
 async function resampleToMono16k(buffer) {
   const OfflineAudioContextClass = getOfflineAudioContextClass();
   if (!OfflineAudioContextClass) return buffer;
@@ -180,7 +166,7 @@ function encodeWavBlob(buffer, gainMultiplier = 1) {
   writeString(8, "WAVE");
   writeString(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
+  view.setUint16(20, 1, true);
   view.setUint16(22, numberOfChannels, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * blockAlign, true);
@@ -204,41 +190,111 @@ function encodeWavBlob(buffer, gainMultiplier = 1) {
   return new Blob([arrayBuffer], { type: "audio/wav" });
 }
 
-// Main entry point. Returns: { chunks: [{ blob, mimeType }], usedChunking, usedGainBoost }
-export async function prepareAudioForTranscription(blob) {
-  const buffer = await decodeAudioBlob(blob);
+function boundariesToChunkPlans(boundarySamples, sampleRate) {
+  const chunks = [];
+  for (let i = 0; i < boundarySamples.length - 1; i += 1) {
+    const startSample = boundarySamples[i];
+    const endSample = boundarySamples[i + 1];
+    chunks.push({
+      index: i,
+      startSample,
+      endSample,
+      startSeconds: startSample / sampleRate,
+      endSeconds: endSample / sampleRate,
+    });
+  }
+  return chunks;
+}
+
+// Record quiet-cut boundaries only; no audio is encoded here.
+export async function planAudioChunks(blob, options = {}) {
+  const buffer = options.decodedBuffer || await decodeAudioBlob(blob);
   if (!buffer) {
     return {
-      chunks: [{ blob, mimeType: blob.type || "" }],
+      durationSeconds: 0,
       usedChunking: false,
-      usedGainBoost: false,
+      canDecode: false,
+      chunks: [{ index: 0, startSample: 0, endSample: 0, startSeconds: 0, endSeconds: 0 }],
     };
   }
 
   const boundarySamples = computeChunkBoundarySamples(buffer);
   const usedChunking = boundarySamples.length > 2;
-  const chunks = [];
-  let usedGainBoost = false;
+  const chunks = boundariesToChunkPlans(boundarySamples, buffer.sampleRate);
+  const durationSeconds = buffer.duration;
+  return {
+    durationSeconds,
+    usedChunking,
+    canDecode: true,
+    sampleRate: buffer.sampleRate,
+    chunks,
+  };
+}
 
-  for (let i = 0; i < boundarySamples.length - 1; i += 1) {
-    const startSample = boundarySamples[i];
-    const endSample = boundarySamples[i + 1];
-    const segment = usedChunking ? sliceBuffer(buffer, startSample, endSample) : buffer;
-    const gainMultiplier = computeGainMultiplier(segment);
-    if (gainMultiplier > 1) usedGainBoost = true;
-
-    if (!usedChunking && gainMultiplier === 1) {
-      // Nothing to improve here: keep the original file untouched so we don't
-      // pay a re-encode cost (or lose the original codec's quality) for the
-      // common case of an already short, already clear recording.
-      chunks.push({ blob, mimeType: blob.type || "" });
-      break;
-    }
-
-    const resampled = await resampleToMono16k(segment);
-    const chunkBlob = encodeWavBlob(resampled, gainMultiplier);
-    chunks.push({ blob: chunkBlob, mimeType: "audio/wav" });
+// Encode a single planned chunk (re-decoding the source unless a decoded
+// buffer is passed in). Callers should await
+// one chunk at a time and not keep every returned blob around longer than needed.
+export async function buildChunkAudioBlob(sourceBlob, chunkPlan, options = {}) {
+  const fallbackMime = options.fallbackMimeType || sourceBlob?.type || "";
+  const buffer = options.decodedBuffer || await decodeAudioBlob(sourceBlob);
+  if (!buffer || !chunkPlan) {
+    return {
+      blob: sourceBlob,
+      mimeType: fallbackMime,
+      usedGainBoost: false,
+      usedOriginal: true,
+    };
   }
 
-  return { chunks, usedChunking, usedGainBoost };
+  const usedChunking = options.usedChunking === true;
+  const startSample = Number(chunkPlan.startSample) || 0;
+  const endSample = Number(chunkPlan.endSample) || buffer.length;
+  const segment = usedChunking || (startSample > 0 || endSample < buffer.length)
+    ? sliceBuffer(buffer, startSample, Math.min(endSample, buffer.length))
+    : buffer;
+  const gainMultiplier = computeGainMultiplier(segment);
+
+  if (!usedChunking && gainMultiplier === 1 && startSample === 0 && endSample >= buffer.length) {
+    return {
+      blob: sourceBlob,
+      mimeType: fallbackMime,
+      usedGainBoost: false,
+      usedOriginal: true,
+    };
+  }
+
+  const resampled = await resampleToMono16k(segment);
+  const chunkBlob = encodeWavBlob(resampled, gainMultiplier);
+  return {
+    blob: chunkBlob,
+    mimeType: "audio/wav",
+    usedGainBoost: gainMultiplier > 1,
+    usedOriginal: false,
+  };
+}
+
+// Back-compat helper used by older call sites / tests: builds every chunk up
+// front. Prefer planAudioChunks + buildChunkAudioBlob for memory-sensitive flows.
+export async function prepareAudioForTranscription(blob) {
+  const plan = await planAudioChunks(blob);
+  if (!plan.canDecode) {
+    return {
+      chunks: [{ blob, mimeType: blob.type || "" }],
+      usedChunking: false,
+      usedGainBoost: false,
+      plan,
+    };
+  }
+
+  const chunks = [];
+  let usedGainBoost = false;
+  for (const chunkPlan of plan.chunks) {
+    const built = await buildChunkAudioBlob(blob, chunkPlan, {
+      usedChunking: plan.usedChunking,
+      fallbackMimeType: blob.type || "",
+    });
+    if (built.usedGainBoost) usedGainBoost = true;
+    chunks.push({ blob: built.blob, mimeType: built.mimeType });
+  }
+  return { chunks, usedChunking: plan.usedChunking, usedGainBoost, plan };
 }
