@@ -108,6 +108,7 @@ export function applyLocatedCorrections(text, located) {
       start,
       end: out.length,
       whitespaceOnly: Boolean(item.whitespaceOnly),
+      reverted: false,
     });
     cursor = item.end;
   }
@@ -123,22 +124,33 @@ export function highlightedFixCount(fixes = []) {
   return (fixes || []).filter((fix) => !fix.whitespaceOnly).length;
 }
 
+export function displayedFixText(fix) {
+  return Boolean(fix?.reverted) ? String(fix?.original || "") : String(fix?.corrected || "");
+}
+
 // Re-anchor stored fixes in the current text (after later edits or a render).
+// A reverted fix is still a mark: we locate the original typo that is showing.
 export function locateStoredFixes(text, fixes) {
   const source = String(text || "");
   const used = [];
   const located = [];
   for (const fix of fixes || []) {
-    const needle = String(fix.corrected || "");
-    if (!needle) continue;
     const original = String(fix.original || "");
+    const corrected = String(fix.corrected || "");
+    const reverted = Boolean(fix.reverted);
+    const needle = displayedFixText(fix);
+    if (!needle) continue;
     const tryRange = (start) => {
       if (start < 0 || start + needle.length > source.length) return null;
       if (source.slice(start, start + needle.length) !== needle) return null;
-      // If the typo itself is still at this index (e.g. "อนุญาต" inside
-      // unfixed "อนุญาติ"), this is not a real applied correction.
-      if (original && original !== needle && source.slice(start, start + original.length) === original) {
-        return null;
+      // If we are looking for the corrected form, skip a hit that is only the
+      // prefix of the still-unfixed typo (e.g. "อนุญาต" inside "อนุญาติ").
+      // Do not skip when the original is a prefix of the corrected word
+      // (e.g. "ค่าเสียหา" → "ค่าเสียหาย"): that is a real applied fix.
+      if (!reverted && original && original !== needle && source.slice(start, start + original.length) === original) {
+        if (original.startsWith(needle) && original.length > needle.length) {
+          return null;
+        }
       }
       const range = { start, end: start + needle.length };
       if (used.some((seen) => rangesOverlap(seen, range))) return null;
@@ -166,17 +178,28 @@ export function locateStoredFixes(text, fixes) {
   return located.sort((a, b) => a.start - b.start);
 }
 
-export function revertFixInText(text, fix) {
+export function toggleFixInText(text, fix) {
   const source = String(text || "");
   const located = locateStoredFixes(source, [fix]);
   if (!located.length) {
-    return { text: source, found: false };
+    return { text: source, found: false, reverted: Boolean(fix?.reverted) };
   }
   const hit = located[0];
+  const nextReverted = !Boolean(fix?.reverted);
+  const nextText = nextReverted ? String(fix.original || "") : String(fix.corrected || "");
   return {
-    text: source.slice(0, hit.start) + fix.original + source.slice(hit.end),
+    text: source.slice(0, hit.start) + nextText + source.slice(hit.end),
     found: true,
+    reverted: nextReverted,
+    start: hit.start,
+    end: hit.start + nextText.length,
   };
+}
+
+export function revertFixInText(text, fix) {
+  if (fix?.reverted) return { text: String(text || ""), found: true };
+  const result = toggleFixInText(text, fix);
+  return { text: result.text, found: result.found };
 }
 
 export function splitTextIntoSpellChunks(text, maxChars = SPELLCHECK_CHUNK_CHARS) {
@@ -214,8 +237,11 @@ export function renderTextWithSpellFixes(text, fixes, renderPlain) {
   const parts = [];
   marks.forEach((mark) => {
     if (mark.start > cursor) parts.push(paint(source.slice(cursor, mark.start)));
-    const title = `คลิกเพื่อกลับเป็น “${mark.original}”`;
-    parts.push(`<span class="spell-fix" role="button" tabindex="0" data-spell-fix-id="${escapeAttr(mark.id)}" title="${escapeAttr(title)}">${paint(mark.corrected)}</span>`);
+    const shown = displayedFixText(mark);
+    const title = mark.reverted
+      ? `คลิกเพื่อใช้คำที่แก้ “${mark.corrected}”`
+      : `คลิกเพื่อกลับเป็น “${mark.original}”`;
+    parts.push(`<span class="spell-fix" role="button" tabindex="0" data-spell-fix-id="${escapeAttr(mark.id)}" title="${escapeAttr(title)}">${paint(shown)}</span>`);
     cursor = mark.end;
   });
   if (cursor < source.length) parts.push(paint(source.slice(cursor)));

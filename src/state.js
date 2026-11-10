@@ -3,9 +3,9 @@
 // handles like timers/streams) from here - there is exactly one instance of
 // each, so mutations made in one module are visible everywhere else.
 
-import { readStorage, writeStorage } from "./storage.js?v=0.39.11";
-import { DICTIONARY_STORAGE_KEY, DEFAULT_DICTIONARY, cleanDictionaryText } from "./dictionary.js?v=0.39.11";
-import { readCaseInfoStorage } from "./case-info.js?v=0.39.11";
+import { readStorage, writeStorage } from "./storage.js?v=0.39.12";
+import { DICTIONARY_STORAGE_KEY, DEFAULT_DICTIONARY, cleanDictionaryText } from "./dictionary.js?v=0.39.12";
+import { readCaseInfoStorage } from "./case-info.js?v=0.39.12";
 
 // App version shown in UI and used for static asset cache-busting (?v=...).
 export const APP_VERSION = "0.39";

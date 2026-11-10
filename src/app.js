@@ -13,14 +13,14 @@
   getEffectiveModel,
   isCustomModelSelection,
   isPresetModel,
-} from "./state.js?v=0.39.11";
-import { readStorage, writeStorage, removeStorage } from "./storage.js?v=0.39.11";
+} from "./state.js?v=0.39.12";
+import { readStorage, writeStorage, removeStorage } from "./storage.js?v=0.39.12";
 import {
   DICTIONARY_STORAGE_KEY,
   DEFAULT_DICTIONARY,
   cleanDictionaryText,
   parseDictionaryRules,
-} from "./dictionary.js?v=0.39.11";
+} from "./dictionary.js?v=0.39.12";
 import {
   DEFAULT_CASE_INFO,
   normalizeCaseInfo,
@@ -29,7 +29,7 @@ import {
   formatCaseInfoForPrompt,
   formatCaseInfoForExport,
   hasCaseInfoContent,
-} from "./case-info.js?v=0.39.11";
+} from "./case-info.js?v=0.39.12";
 import {
   isCancelError,
   makeCancelError,
@@ -48,7 +48,7 @@ import {
   uploadAudioFileToGemini,
   verifyApiKey,
   listGeminiModelIds,
-} from "./gemini-client.js?v=0.39.11";
+} from "./gemini-client.js?v=0.39.12";
 import {
   buildRawTranscriptionPrompt,
   buildDocumentTranscriptionPrompt,
@@ -57,14 +57,14 @@ import {
   buildSummaryIssueAnalysisPrompt,
   buildSpellcheckPrompt,
   buildReflowPrompt,
-} from "./prompts.js?v=0.39.11";
+} from "./prompts.js?v=0.39.12";
 import {
   applyLayoutReflow,
   isLayoutOnlyChange,
   layoutFingerprint,
   reflowTextLocally,
-} from "./reflow.js?v=0.39.11";
-import { planAudioChunks, buildChunkAudioBlob, decodeAudioSource } from "./audio-processing.js?v=0.39.11";
+} from "./reflow.js?v=0.39.12";
+import { planAudioChunks, buildChunkAudioBlob, decodeAudioSource } from "./audio-processing.js?v=0.39.12";
 import {
   classifyImportFile,
   filesToDocumentPages,
@@ -74,7 +74,7 @@ import {
   attachPreview,
   cropImageBlob,
   clampCropRect,
-} from "./image-processing.js?v=0.39.11";
+} from "./image-processing.js?v=0.39.12";
 import {
   createTranscriptSegmentsFromPlan,
   createTranscriptSegmentsFromDocument,
@@ -91,7 +91,7 @@ import {
   unlinkRemovedDocumentPages,
   reorderLinkedDocumentSegments,
   replaceLinkedDocumentSegments,
-} from "./transcript-segments.js?v=0.39.11";
+} from "./transcript-segments.js?v=0.39.12";
 import {
   SPELL_BUSY,
   applyCorrectionsToText,
@@ -101,13 +101,14 @@ import {
   parseSpellcheckResponse,
   renderTextWithSpellFixes,
   revertFixInText,
+  toggleFixInText,
   splitTextIntoSpellChunks,
-} from "./spellcheck.js?v=0.39.11";
+} from "./spellcheck.js?v=0.39.12";
 import {
   applyReviewedTextToRawSegments,
   stripSpeakerPrefixes,
   wrapSegmentsForReview,
-} from "./speaker-labels.js?v=0.39.11";
+} from "./speaker-labels.js?v=0.39.12";
 import {
   escapeHtml,
   escapeRegExp,
@@ -125,7 +126,7 @@ import {
   formatExternalAudioConversionMessage,
   formatAudioInfo,
   fileToBase64,
-} from "./utils.js?v=0.39.11";
+} from "./utils.js?v=0.39.12";
 
 function splitWords(text) {
   return String(text).split(/(\s+)/).filter(Boolean).map((word) => ({ word, originalWord: word }));
@@ -3975,7 +3976,19 @@ function isSpellButtonDisabled() {
 }
 
 async function requestSpellCorrections(chunkText, signal) {
-  const raw = await callGemini([{ text: buildSpellcheckPrompt(chunkText) }], "application/json", { signal });
+  const parts = [{ text: buildSpellcheckPrompt(chunkText) }];
+  const preferred = getEffectiveModel();
+  const fallback = "gemini-3.5-flash-lite";
+  let raw;
+  try {
+    raw = await callGemini(parts, "application/json", { signal, model: preferred });
+  } catch (error) {
+    if (Number(error?.status) === 503 && preferred !== fallback) {
+      raw = await callGemini(parts, "application/json", { signal, model: fallback });
+    } else {
+      throw error;
+    }
+  }
   return parseSpellcheckResponse(raw).corrections;
 }
 
@@ -4156,8 +4169,8 @@ function revertSpellFix(fixId) {
   const fix = (state.spellFixes || []).find((item) => item.id === fixId);
   if (!fix) return false;
   // Read from state (what the mark was rendered from), not a live DOM sync.
-  // syncFormState() + innerText.trim() can shift text and make the original
-  // typo unfindable, so the highlight vanished without the word changing.
+  // Clicking toggles between the corrected word and the original typo, but
+  // the yellow mark stays so the user can switch back and forth.
   const attempts = [resolveSpellFixTarget(fix)];
   if (attempts[0].type !== "draft") attempts.push({ targetId: "draft", type: "draft" });
   if (Array.isArray(state.transcriptSegments)) {
@@ -4165,26 +4178,26 @@ function revertSpellFix(fixId) {
       if (segment.status === "ok") attempts.push({ targetId: segment.id, type: "segment" });
     });
   }
-  let applied = false;
+  let applied = null;
   const seen = new Set();
   for (const target of attempts) {
     const key = `${target.type}:${target.targetId}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const current = readSpellTargetText(target);
-    const result = revertFixInText(current, fix);
+    const result = toggleFixInText(current, fix);
     if (!result.found) continue;
     writeSpellTargetText({ ...target, turnIndex: target.turnIndex }, result.text);
-    applied = true;
+    applied = result;
     break;
   }
   if (!applied) return false;
-  state.spellFixes = (state.spellFixes || []).filter((item) => item.id !== fixId);
+  fix.reverted = applied.reverted;
+  if (Number.isFinite(applied.start) && Number.isFinite(applied.end)) {
+    fix.start = applied.start;
+    fix.end = applied.end;
+  }
   reanchorSpellFixes();
-  state.message = buildSpellResultMessage({
-    highlighted: highlightedFixCount(state.spellFixes),
-    whitespace: (state.spellFixes || []).filter((item) => item.whitespaceOnly).length,
-  });
   render();
   return true;
 }
@@ -4483,7 +4496,7 @@ function renderPrivacyModal() {
           </div>
           <div>
             <span>เพื่อความโปร่งใส แอปพลิเคชันนี้เปิดเผย source code เพื่อให้ตรวจสอบการทำงาน: <a href="https://github.com/nitilink/OmKwam" target="_blank" rel="noopener noreferrer">github.com/nitilink/OmKwam</a></span>
-            <span class="privacy-meta">Version: v0.39 · Last updated: 10 Nov 2026, 23:40 ICT</span>
+            <span class="privacy-meta">Version: v0.39 · Last updated: 10 Nov 2026, 23:55 ICT</span>
           </div>
         </div>
       </section>

@@ -3,7 +3,7 @@
 // they are sent to Gemini. HEIC is left as-is (the API accepts it; many
 // browsers cannot preview it).
 
-import { getFileExtension } from "./utils.js?v=0.39.11";
+import { getFileExtension } from "./utils.js?v=0.39.12";
 
 export const IMAGE_MAX_EDGE = 2400;
 export const IMAGE_JPEG_QUALITY = 0.85;
@@ -379,7 +379,7 @@ export async function cropImageBlob(blob, options = {}) {
 
 async function loadPdfjs() {
   if (!pdfjsModulePromise) {
-    pdfjsModulePromise = import("./vendor/pdfjs/pdf.min.js?v=0.39.11").then((mod) => {
+    pdfjsModulePromise = import("./vendor/pdfjs/pdf.min.js?v=0.39.12").then((mod) => {
       const workerSrc = new URL("./vendor/pdfjs/pdf.worker.min.js", import.meta.url).href;
       if (mod.GlobalWorkerOptions) mod.GlobalWorkerOptions.workerSrc = workerSrc;
       return mod;

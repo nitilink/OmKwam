@@ -2,7 +2,7 @@
 // audio MIME/extension guessing, and misc formatting. None of these read or
 // write `state` - they're pure functions or thin DOM wrappers.
 
-import { EXTERNAL_CONVERSION_AUDIO_EXTENSIONS } from "./state.js?v=0.39.11";
+import { EXTERNAL_CONVERSION_AUDIO_EXTENSIONS } from "./state.js?v=0.39.12";
 
 export function escapeHtml(value) {
   return String(value)

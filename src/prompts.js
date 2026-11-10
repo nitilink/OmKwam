@@ -74,7 +74,8 @@ export function buildSummaryIssueAnalysisPrompt(summaryText) {
   return REDACTED;
 }
 
-// Checks a transcript or document text for clear Thai spelling mistakes only.
+// Checks a transcript or document text for clear Thai spelling mistakes and
+// clearly omitted words only. Few-shot examples live in the private prompt.
 // Uses: transcriptText
 // Returns (from Gemini) JSON:
 //   { "corrections": [ { "original": string, "corrected": string } ] }
