@@ -1533,6 +1533,184 @@ button.audio-chunk-retry-pop:hover {
   font-size: 10.5px;
 }
 
+/* จัดหน้า is a bottom-row ghost pill like คัดลอก / ดาวน์โหลด .txt,
+   with a small grayscale AUTO switch inline after the label. */
+.bottom-actions .reflow-toggle,
+.mini-actions .reflow-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  margin: 0;
+  min-height: 28px;
+  height: 28px;
+  padding: 0 9px;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: normal;
+  white-space: nowrap;
+  color: #dce3ec;
+  background: #151a21;
+  border: 1px solid #303642;
+  border-radius: 8px;
+  vertical-align: middle;
+  cursor: default;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.bottom-actions .reflow-toggle:hover:not(.is-disabled):not(:has(.reflow-run:disabled)),
+.mini-actions .reflow-toggle:hover:not(.is-disabled):not(:has(.reflow-run:disabled)) {
+  border-color: #48515f;
+  background: #202630;
+  color: #dce3ec;
+}
+
+.bottom-actions .reflow-toggle:has(.reflow-run:active):not(.is-disabled):not(:has(.reflow-run:disabled)),
+.mini-actions .reflow-toggle:has(.reflow-run:active):not(.is-disabled):not(:has(.reflow-run:disabled)) {
+  transform: translateY(1px);
+}
+
+.bottom-actions .reflow-toggle.is-reflow-busy,
+.mini-actions .reflow-toggle.is-reflow-busy {
+  opacity: 0.72;
+}
+
+/* Match button:disabled (opacity 0.48) when the run control is off.
+   The auto switch stays clickable and only inherits this dim — it must
+   not make the pill look enabled. */
+.reflow-toggle.is-disabled,
+.bottom-actions .reflow-toggle:has(.reflow-run:disabled),
+.mini-actions .reflow-toggle:has(.reflow-run:disabled) {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.bottom-actions .reflow-run,
+.mini-actions .reflow-run,
+.reflow-run {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  padding: 0;
+  margin: 0;
+  min-height: 0;
+  height: auto;
+  align-self: stretch;
+  line-height: normal;
+  cursor: pointer;
+  transform: none;
+}
+
+.reflow-run-label {
+  display: inline;
+  line-height: normal;
+  font: inherit;
+  font-weight: inherit;
+}
+
+.bottom-actions .reflow-run:hover:not(:disabled),
+.mini-actions .reflow-run:hover:not(:disabled),
+.bottom-actions .reflow-run:active:not(:disabled),
+.mini-actions .reflow-run:active:not(:disabled) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.reflow-run:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.bottom-actions .reflow-switch,
+.mini-actions .reflow-switch,
+.reflow-switch {
+  appearance: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 14px;
+  min-width: 22px;
+  min-height: 14px;
+  flex: 0 0 22px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transform: none;
+}
+
+.bottom-actions .reflow-switch:hover:not(:disabled),
+.mini-actions .reflow-switch:hover:not(:disabled),
+.bottom-actions .reflow-switch:active:not(:disabled),
+.mini-actions .reflow-switch:active:not(:disabled) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.reflow-switch::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 22px;
+  height: 12px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: #2a3340;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+
+.reflow-switch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d5dee8;
+  transform: translateY(-50%);
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.reflow-toggle.is-reflow-on .reflow-switch::before {
+  background: #b8c0c9;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.reflow-toggle.is-reflow-on .reflow-switch::after {
+  transform: translate(11px, -50%);
+  background: #1a1f26;
+}
+
+.reflow-toggle.is-disabled .reflow-switch:disabled,
+.reflow-toggle:has(.reflow-run:disabled) .reflow-switch:disabled,
+.reflow-switch:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.reflow-toggle.is-disabled .reflow-switch:not(:disabled),
+.reflow-toggle:has(.reflow-run:disabled) .reflow-switch:not(:disabled) {
+  cursor: pointer;
+  opacity: 1;
+}
+
 .summary-output {
   flex: 1;
   min-height: 0;

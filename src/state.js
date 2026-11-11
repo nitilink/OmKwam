@@ -3,9 +3,9 @@
 // handles like timers/streams) from here - there is exactly one instance of
 // each, so mutations made in one module are visible everywhere else.
 
-import { readStorage, writeStorage } from "./storage.js?v=0.39.12";
-import { DICTIONARY_STORAGE_KEY, DEFAULT_DICTIONARY, cleanDictionaryText } from "./dictionary.js?v=0.39.12";
-import { readCaseInfoStorage } from "./case-info.js?v=0.39.12";
+import { readStorage, writeStorage } from "./storage.js?v=0.39.19";
+import { DICTIONARY_STORAGE_KEY, DEFAULT_DICTIONARY, cleanDictionaryText } from "./dictionary.js?v=0.39.19";
+import { readCaseInfoStorage } from "./case-info.js?v=0.39.19";
 
 // App version shown in UI and used for static asset cache-busting (?v=...).
 export const APP_VERSION = "0.39";
@@ -34,6 +34,7 @@ export const MODEL_STORAGE_KEY = "omkwam.byok.model.2026-11-09-v3";
 export const CUSTOM_MODEL_STORAGE_KEY = "omkwam.byok.customModel.2026-11-09-v1";
 export const AUTO_SPELLCHECK_STORAGE_KEY = "omkwam.autoSpellcheck.v1";
 export const AUTO_SPEAKER_REVIEW_STORAGE_KEY = "omkwam.autoSpeakerReview.v1";
+export const AUTO_REFLOW_TRANSCRIPT_STORAGE_KEY = "omkwam.autoReflow.transcript.v1";
 
 // If the user previously saved a preset that we later removed from the dropdown
 // (e.g. gemini-4-argon / gemini-3.1-pro-preview), keep that id via the custom
@@ -117,6 +118,9 @@ export const state = {
   spellCheckedIds: [],
   autoSpellcheck: readStorage(AUTO_SPELLCHECK_STORAGE_KEY, "") === "1",
   autoSpeakerReview: readStorage(AUTO_SPEAKER_REVIEW_STORAGE_KEY, "") === "1",
+  autoReflow: {
+    transcript: readStorage(AUTO_REFLOW_TRANSCRIPT_STORAGE_KEY, "") === "1",
+  },
 };
 
 
@@ -162,6 +166,8 @@ export const refs = {
   // the verdict for a key the user has since replaced.
   apiKeyCheckToken: 0,
   apiKeyCheckTimer: null,
+  reflowUndo: null,
+  reflowPanel: "",
 };
 
 export function isPresetModel(modelValue) {

@@ -120,6 +120,12 @@ export function applyCorrectionsToText(text, corrections) {
   return applyLocatedCorrections(text, locateCorrections(text, corrections));
 }
 
+export function typographyPreservesFixes(text, fixes) {
+  const needed = (fixes || []).filter((fix) => !fix.whitespaceOnly && displayedFixText(fix));
+  if (!needed.length) return true;
+  return locateStoredFixes(text, needed).length === needed.length;
+}
+
 export function highlightedFixCount(fixes = []) {
   return (fixes || []).filter((fix) => !fix.whitespaceOnly).length;
 }

@@ -4,8 +4,8 @@
 // No UI/state mutation happens here either, beyond reading the API key/model
 // the user configured.
 
-import { state, DEFAULT_MODEL, getEffectiveModel } from "./state.js?v=0.39.12";
-import { buildNoCacheDirective } from "./prompts.js?v=0.39.12";
+import { state, DEFAULT_MODEL, getEffectiveModel } from "./state.js?v=0.39.19";
+import { buildNoCacheDirective } from "./prompts.js?v=0.39.19";
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_UPLOAD_ENDPOINT = "https://generativelanguage.googleapis.com/upload/v1beta/files";

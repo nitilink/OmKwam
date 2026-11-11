@@ -8,19 +8,20 @@
   CUSTOM_MODEL_STORAGE_KEY,
   AUTO_SPELLCHECK_STORAGE_KEY,
   AUTO_SPEAKER_REVIEW_STORAGE_KEY,
+  AUTO_REFLOW_TRANSCRIPT_STORAGE_KEY,
   INLINE_AUDIO_SAFE_BYTES,
   APP_VERSION,
   getEffectiveModel,
   isCustomModelSelection,
   isPresetModel,
-} from "./state.js?v=0.39.12";
-import { readStorage, writeStorage, removeStorage } from "./storage.js?v=0.39.12";
+} from "./state.js?v=0.39.19";
+import { readStorage, writeStorage, removeStorage } from "./storage.js?v=0.39.19";
 import {
   DICTIONARY_STORAGE_KEY,
   DEFAULT_DICTIONARY,
   cleanDictionaryText,
   parseDictionaryRules,
-} from "./dictionary.js?v=0.39.12";
+} from "./dictionary.js?v=0.39.19";
 import {
   DEFAULT_CASE_INFO,
   normalizeCaseInfo,
@@ -29,7 +30,7 @@ import {
   formatCaseInfoForPrompt,
   formatCaseInfoForExport,
   hasCaseInfoContent,
-} from "./case-info.js?v=0.39.12";
+} from "./case-info.js?v=0.39.19";
 import {
   isCancelError,
   makeCancelError,
@@ -48,7 +49,7 @@ import {
   uploadAudioFileToGemini,
   verifyApiKey,
   listGeminiModelIds,
-} from "./gemini-client.js?v=0.39.12";
+} from "./gemini-client.js?v=0.39.19";
 import {
   buildRawTranscriptionPrompt,
   buildDocumentTranscriptionPrompt,
@@ -57,14 +58,19 @@ import {
   buildSummaryIssueAnalysisPrompt,
   buildSpellcheckPrompt,
   buildReflowPrompt,
-} from "./prompts.js?v=0.39.12";
+} from "./prompts.js?v=0.39.19";
 import {
   applyLayoutReflow,
   isLayoutOnlyChange,
   layoutFingerprint,
   reflowTextLocally,
-} from "./reflow.js?v=0.39.12";
-import { planAudioChunks, buildChunkAudioBlob, decodeAudioSource } from "./audio-processing.js?v=0.39.12";
+  reflowFailureMessage,
+  makeReflowTimeoutError,
+  REFLOW_TIMEOUT_MS,
+  REFLOW_BUTTON_LABEL,
+  REFLOW_SUCCESS_MESSAGE,
+} from "./reflow.js?v=0.39.19";
+import { planAudioChunks, buildChunkAudioBlob, decodeAudioSource } from "./audio-processing.js?v=0.39.19";
 import {
   classifyImportFile,
   filesToDocumentPages,
@@ -74,7 +80,7 @@ import {
   attachPreview,
   cropImageBlob,
   clampCropRect,
-} from "./image-processing.js?v=0.39.12";
+} from "./image-processing.js?v=0.39.19";
 import {
   createTranscriptSegmentsFromPlan,
   createTranscriptSegmentsFromDocument,
@@ -91,24 +97,25 @@ import {
   unlinkRemovedDocumentPages,
   reorderLinkedDocumentSegments,
   replaceLinkedDocumentSegments,
-} from "./transcript-segments.js?v=0.39.12";
+} from "./transcript-segments.js?v=0.39.19";
 import {
   SPELL_BUSY,
   applyCorrectionsToText,
   buildSpellResultMessage,
   highlightedFixCount,
+  typographyPreservesFixes,
   locateStoredFixes,
   parseSpellcheckResponse,
   renderTextWithSpellFixes,
   revertFixInText,
   toggleFixInText,
   splitTextIntoSpellChunks,
-} from "./spellcheck.js?v=0.39.12";
+} from "./spellcheck.js?v=0.39.19";
 import {
   applyReviewedTextToRawSegments,
   stripSpeakerPrefixes,
   wrapSegmentsForReview,
-} from "./speaker-labels.js?v=0.39.12";
+} from "./speaker-labels.js?v=0.39.19";
 import {
   escapeHtml,
   escapeRegExp,
@@ -126,7 +133,7 @@ import {
   formatExternalAudioConversionMessage,
   formatAudioInfo,
   fileToBase64,
-} from "./utils.js?v=0.39.12";
+} from "./utils.js?v=0.39.19";
 
 function splitWords(text) {
   return String(text).split(/(\s+)/).filter(Boolean).map((word) => ({ word, originalWord: word }));
@@ -870,7 +877,6 @@ function updateTranscriptEditorState(element) {
   element.classList.toggle("is-empty", !hasText);
   document.querySelector("#copy-transcript")?.toggleAttribute("disabled", !hasText);
   document.querySelector("#download-transcript")?.toggleAttribute("disabled", !hasText);
-  document.querySelector("#reflow-transcript")?.toggleAttribute("disabled", isControlDisabled("reflow-transcript"));
   const clearTranscript = document.querySelector("#clear-transcript");
   if (clearTranscript) {
     const canUndo = hasClearedTranscript();
@@ -878,6 +884,7 @@ function updateTranscriptEditorState(element) {
     clearTranscript.textContent = !hasText && canUndo ? "ยกเลิกล้างข้อความ" : "ล้างข้อความ";
   }
   refreshTranscriptActionButtons();
+  refreshReflowControlLabels();
   const reviewSpeakers = document.querySelector("#review-speakers");
   if (reviewSpeakers && !state.busy) {
     // Typing or deleting a "ถาม :" tag flips which action this button offers,
@@ -1476,7 +1483,6 @@ function refreshTranscriptActionButtons() {
     "#start-recording": "start-recording",
     "#start-camera": "start-camera",
     "#copy-summary": "copy-summary",
-    "#reflow-summary": "reflow-summary",
     "#download-summary": "download-summary",
     "#clear-summary": "clear-summary",
     "#play-audio": "play-audio",
@@ -1488,6 +1494,16 @@ function refreshTranscriptActionButtons() {
   document.querySelector("#camera-capture")?.toggleAttribute("disabled", isControlDisabled("camera-capture"));
   document.querySelector("#audio-file")?.toggleAttribute("disabled", isControlDisabled("audio-file"));
   document.querySelector("#audio-seek")?.toggleAttribute("disabled", isControlDisabled("audio-seek"));
+  syncReflowControlDisabled();
+}
+
+function syncReflowControlDisabled() {
+  const run = document.querySelector("#reflow-transcript");
+  const sw = document.querySelector("#reflow-transcript-auto");
+  const wrap = document.querySelector(".transcript-panel .reflow-toggle");
+  if (run) run.toggleAttribute("disabled", isControlDisabled("reflow-transcript"));
+  if (sw) sw.toggleAttribute("disabled", isControlDisabled("reflow-transcript-auto"));
+  wrap?.classList.toggle("is-disabled", Boolean(run?.disabled));
 }
 
 function downloadLatestAudio() {
@@ -3473,6 +3489,16 @@ function setAutoSpeakerReview(on) {
   writeStorage(AUTO_SPEAKER_REVIEW_STORAGE_KEY, state.autoSpeakerReview ? "1" : "0");
 }
 
+function isAutoReflowOn() {
+  return Boolean(state.autoReflow?.transcript);
+}
+
+function setAutoReflow(on) {
+  if (!state.autoReflow) state.autoReflow = { transcript: false };
+  state.autoReflow.transcript = Boolean(on);
+  writeStorage(AUTO_REFLOW_TRANSCRIPT_STORAGE_KEY, state.autoReflow.transcript ? "1" : "0");
+}
+
 function unlabeledOkSegments(segments) {
   return (segments || []).filter((segment) => (
     segment
@@ -3585,23 +3611,27 @@ async function maybeAutoSpeakerReview(segments) {
 async function maybeAutoAfterTranscription(segments) {
   const source = (segments || []).filter(Boolean);
   const updatedIds = await maybeAutoSpeakerReview(source);
-  if (!state.autoSpellcheck) return;
-  const byId = new Map((state.transcriptSegments || []).map((segment) => [segment.id, segment]));
-  const forSpell = [];
-  const seen = new Set();
-  updatedIds.forEach((id) => {
-    if (byId.has(id) && !seen.has(id)) {
-      forSpell.push(byId.get(id));
-      seen.add(id);
-    }
-  });
-  source.forEach((segment) => {
-    if (byId.has(segment.id) && !seen.has(segment.id)) {
-      forSpell.push(byId.get(segment.id));
-      seen.add(segment.id);
-    }
-  });
-  await maybeAutoSpellcheck(forSpell);
+  let typoRan = false;
+  if (state.autoSpellcheck) {
+    const byId = new Map((state.transcriptSegments || []).map((segment) => [segment.id, segment]));
+    const forSpell = [];
+    const seen = new Set();
+    updatedIds.forEach((id) => {
+      if (byId.has(id) && !seen.has(id)) {
+        forSpell.push(byId.get(id));
+        seen.add(id);
+      }
+    });
+    source.forEach((segment) => {
+      if (byId.has(segment.id) && !seen.has(segment.id)) {
+        forSpell.push(byId.get(segment.id));
+        seen.add(segment.id);
+      }
+    });
+    typoRan = await maybeAutoSpellcheck(forSpell);
+  }
+  // typo-check itself calls maybeAutoReflow when it finishes; otherwise tidy now.
+  if (!typoRan) await maybeAutoReflow();
 }
 
 function newlyOkUncheckedIds(segments) {
@@ -3612,16 +3642,29 @@ function newlyOkUncheckedIds(segments) {
 }
 
 async function maybeAutoSpellcheck(segments) {
-  if (!state.autoSpellcheck) return;
-  if (state.busy) return;
+  if (!state.autoSpellcheck) return false;
+  if (state.busy) return false;
   const ids = newlyOkUncheckedIds(segments);
-  if (!ids.length) return;
+  if (!ids.length) return false;
   if (!state.apiKey.trim()) {
     state.message = "เปิดตรวจคำผิดอัตโนมัติไว้ แต่ยังไม่มี API key";
     render();
-    return;
+    return false;
   }
   await runSpellcheck({ onlyTargetIds: ids, preserveExistingFixes: true });
+  return true;
+}
+
+async function maybeAutoReflow() {
+  if (!isAutoReflowOn()) return;
+  if (state.busy) return;
+  if (!hasTranscriptContent()) return;
+  if (!state.apiKey.trim()) {
+    state.message = "เปิดจัดหน้าอัตโนมัติไว้ แต่ยังไม่มี API key";
+    render();
+    return;
+  }
+  await runReflow("transcript");
 }
 
 
@@ -3733,20 +3776,26 @@ function transcriptReflowFingerprint() {
   return `draft:${state.transcriptDraft || ""}`;
 }
 
-function summaryReflowFingerprint() {
-  return `summary:${state.summary || ""}`;
-}
-
 function canUndoReflow(panel) {
   const undo = refs.reflowUndo;
-  if (!undo || undo.panel !== panel) return false;
-  const now = panel === "summary" ? summaryReflowFingerprint() : transcriptReflowFingerprint();
-  return now === undo.afterFingerprint;
+  if (!undo || undo.panel !== panel || panel !== "transcript") return false;
+  return transcriptReflowFingerprint() === undo.afterFingerprint;
 }
 
 function clearReflowUndo(panel) {
   if (!refs.reflowUndo) return;
   if (!panel || refs.reflowUndo.panel === panel) refs.reflowUndo = null;
+}
+
+function snapshotSpellFixes() {
+  return (state.spellFixes || []).map((fix) => ({ ...fix }));
+}
+
+function restoreSpellFixes(snapshotFixes) {
+  if (Array.isArray(snapshotFixes)) {
+    state.spellFixes = snapshotFixes.map((fix) => ({ ...fix }));
+  }
+  reanchorSpellFixes();
 }
 
 function snapshotTranscriptForReflow() {
@@ -3755,9 +3804,10 @@ function snapshotTranscriptForReflow() {
       kind: "segments",
       segments: state.transcriptSegments.map((segment) => ({ id: segment.id, text: segment.text })),
       draft: state.transcriptDraft,
+      spellFixes: snapshotSpellFixes(),
     };
   }
-  return { kind: "draft", draft: state.transcriptDraft };
+  return { kind: "draft", draft: state.transcriptDraft, spellFixes: snapshotSpellFixes() };
 }
 
 function restoreTranscriptReflow(snapshot) {
@@ -3771,7 +3821,25 @@ function restoreTranscriptReflow(snapshot) {
     state.transcriptDraft = snapshot?.draft || "";
     state.turns = [];
   }
-  reanchorSpellFixes();
+  restoreSpellFixes(snapshot?.spellFixes);
+}
+
+async function callReflowModel(parts, model, signal) {
+  const timeoutController = new AbortController();
+  const onUserAbort = () => timeoutController.abort();
+  const timer = window.setTimeout(() => timeoutController.abort(), REFLOW_TIMEOUT_MS);
+  signal?.addEventListener?.("abort", onUserAbort, { once: true });
+  try {
+    if (signal?.aborted) throw makeCancelError();
+    return await callGemini(parts, "text/plain", { signal: timeoutController.signal, model });
+  } catch (error) {
+    if (signal?.aborted) throw isCancelError(error) ? error : makeCancelError();
+    if (error?.isTimeout || timeoutController.signal.aborted) throw makeReflowTimeoutError();
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+    signal?.removeEventListener?.("abort", onUserAbort);
+  }
 }
 
 async function requestReflowText(text, signal) {
@@ -3779,16 +3847,84 @@ async function requestReflowText(text, signal) {
   const fallback = REFLOW_FALLBACK_MODEL;
   const parts = [{ text: buildReflowPrompt(text) }];
   try {
-    return await callGemini(parts, "text/plain", { signal, model: preferred });
+    return await callReflowModel(parts, preferred, signal);
   } catch (error) {
+    if (isCancelError(error) || error?.isTimeout) throw error;
     if (Number(error?.status) === 503 && preferred !== fallback) {
-      return await callGemini(parts, "text/plain", { signal, model: fallback });
+      return await callReflowModel(parts, fallback, signal);
     }
     throw error;
   }
 }
 
-async function reflowOneText(original, signal) {
+function reflowRunTitle(panel) {
+  const running = state.busy === "reflowing" && refs.reflowPanel === panel;
+  if (running) return "กดเพื่อยกเลิก";
+  if (canUndoReflow(panel)) return "กดอีกครั้งเพื่อคืนค่าวรรคตอนเดิม หรือกด Ctrl+Z";
+  return "จัดระเบียบวรรคตอนโดยไม่เปลี่ยนคำ";
+}
+
+function refreshReflowControlLabels() {
+  const button = document.querySelector("#reflow-transcript");
+  if (!button) return;
+  const label = button.querySelector(".reflow-run-label") || button;
+  label.textContent = REFLOW_BUTTON_LABEL;
+  button.title = reflowRunTitle("transcript");
+}
+
+function renderReflowControl(panel) {
+  const autoOn = isAutoReflowOn();
+  const running = state.busy === "reflowing" && refs.reflowPanel === "transcript";
+  const runId = "reflow-transcript";
+  const autoId = "reflow-transcript-auto";
+  const runDisabled = disabledAttr(runId);
+  const autoDisabled = disabledAttr(autoId);
+  const wrapperDisabled = runDisabled ? " is-disabled" : "";
+  const busyClass = running ? " is-reflow-busy" : "";
+  const autoClass = autoOn ? " is-reflow-on" : "";
+  const busy = running ? ' aria-busy="true"' : "";
+  return `<div class="ghost-button reflow-toggle${autoClass}${wrapperDisabled}${busyClass}" role="group" aria-label="จัดหน้า"><button type="button" class="reflow-run" id="${runId}" ${runDisabled} title="${reflowRunTitle(panel)}"${busy}><span class="reflow-run-label">${REFLOW_BUTTON_LABEL}</span></button><button type="button" class="reflow-switch" id="${autoId}" aria-pressed="${autoOn ? "true" : "false"}" aria-label="จัดหน้าอัตโนมัติ" title="จัดหน้าอัตโนมัติ" ${autoDisabled}></button></div>`;
+}
+
+
+function finishReflowAttempt(panel, before, result) {
+  const changed = Boolean(result?.changed);
+  const rejected = Boolean(result?.rejected || result?.reason === "rejected");
+  const error = result?.error || null;
+  if (changed) {
+    refs.reflowUndo = {
+      panel,
+      before,
+      afterFingerprint: transcriptReflowFingerprint(),
+    };
+    state.message = REFLOW_SUCCESS_MESSAGE;
+    return "changed";
+  }
+  if (rejected) {
+    state.message = reflowFailureMessage(error, { rejected: true });
+    return "rejected";
+  }
+  if (!error || result?.reason === "unchanged" || result?.reason === "ok") {
+    state.message = "ข้อความจัดหน้าอยู่แล้ว ไม่ต้องเปลี่ยน";
+    return "unchanged";
+  }
+  state.message = reflowFailureMessage(error);
+  return "error";
+}
+
+function applyReflowKeepingFixes(source, proposed, fixes) {
+  const applied = applyLayoutReflow(source, proposed);
+  if (!fixes?.length || typographyPreservesFixes(applied.text, fixes)) {
+    return applied;
+  }
+  const local = applyLayoutReflow(source, reflowTextLocally(source));
+  if (typographyPreservesFixes(local.text, fixes)) {
+    return { ...local, reason: "local-fallback" };
+  }
+  return { text: source, accepted: false, reason: "rejected" };
+}
+
+async function reflowOneText(original, signal, fixes = []) {
   const source = String(original || "");
   if (!source.trim()) return { text: source, changed: false, reason: "empty" };
   let proposed = "";
@@ -3796,73 +3932,64 @@ async function reflowOneText(original, signal) {
     proposed = await requestReflowText(source, signal);
   } catch (error) {
     if (isCancelError(error)) throw error;
-    const applied = applyLayoutReflow(source, reflowTextLocally(source));
-    return { text: applied.text, changed: applied.text !== source, reason: applied.accepted ? "local-fallback" : "rejected", error };
+    const applied = applyReflowKeepingFixes(source, reflowTextLocally(source), fixes);
+    return { text: applied.text, changed: applied.text !== source, reason: applied.accepted || applied.reason === "local-fallback" ? (applied.reason || "local-fallback") : "rejected", error };
   }
-  const applied = applyLayoutReflow(source, proposed);
+  const applied = applyReflowKeepingFixes(source, proposed, fixes);
   return { text: applied.text, changed: applied.text !== source, reason: applied.reason };
 }
 
 function undoReflow(panel) {
   const undo = refs.reflowUndo;
-  if (!canUndoReflow(panel) || !undo) return false;
-  if (panel === "summary") state.summary = undo.before.summary;
-  else restoreTranscriptReflow(undo.before);
-  refs.reflowUndo = null;
+  if (panel !== "transcript" || !canUndoReflow(panel) || !undo) return false;
+  restoreTranscriptReflow(undo.before);
+  clearReflowUndo(panel);
   state.message = "คืนค่าการจัดหน้าแล้ว";
   render();
   return true;
 }
 
-async function runReflow(panel) {
+function toggleReflow(panel) {
   if (state.busy === "reflowing" && refs.reflowPanel === panel) {
     cancelActiveTask();
     return;
   }
   if (state.busy) return;
   syncFormState();
-  if (undoReflow(panel)) return;
+  if (canUndoReflow(panel)) {
+    undoReflow(panel);
+    return;
+  }
+  runReflow(panel);
+}
 
-  if (panel === "summary") {
-    if (!String(state.summary || "").trim()) {
-      state.message = "ยังไม่มีข้อความสรุปให้จัดหน้า";
-      render();
-      return;
-    }
-  } else if (!hasTranscriptContent()) {
+async function runReflow(panel) {
+  if (panel !== "transcript") return;
+  if (state.busy === "reflowing" && refs.reflowPanel === panel) {
+    cancelActiveTask();
+    return;
+  }
+  if (state.busy) return;
+  syncFormState();
+
+  if (!hasTranscriptContent()) {
     state.message = "ยังไม่มีข้อความให้จัดหน้า";
     render();
     return;
   }
 
-  const before = panel === "summary"
-    ? { summary: state.summary }
-    : snapshotTranscriptForReflow();
+  const before = snapshotTranscriptForReflow();
   refs.reflowPanel = panel;
   const controller = beginCancelableTask("reflowing", "กำลังจัดหน้า", "กำลังจัดหน้า");
   try {
-    if (panel === "summary") {
-      const result = await reflowOneText(state.summary, controller.signal);
-      throwIfCancelled(controller.signal);
-      if (result.changed) {
-        state.summary = result.text;
-        refs.reflowUndo = { panel, before, afterFingerprint: summaryReflowFingerprint() };
-        state.message = formatGeminiSuccessMessage("จัดหน้าแล้ว กดจัดหน้าอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม");
-      } else if (result.error) {
-        handleGeminiError(result.error, "จัดหน้าไม่สำเร็จ จึงใช้ข้อความเดิม");
-      } else {
-        state.message = result.reason === "rejected"
-          ? "ผลจัดหน้าเปลี่ยนคำ จึงใช้ข้อความเดิม"
-          : "ข้อความจัดหน้าอยู่แล้ว ไม่ต้องเปลี่ยน";
-      }
-    } else if (Array.isArray(state.transcriptSegments) && state.transcriptSegments.some((segment) => segment.status === "ok" && String(segment.text || "").trim())) {
+    if (Array.isArray(state.transcriptSegments) && state.transcriptSegments.some((segment) => segment.status === "ok" && String(segment.text || "").trim())) {
       const targets = state.transcriptSegments.filter((segment) => segment.status === "ok" && String(segment.text || "").trim());
       let changed = 0;
       let rejected = 0;
       let lastError = null;
       for (const segment of targets) {
         throwIfCancelled(controller.signal);
-        const result = await reflowOneText(segment.text, controller.signal);
+        const result = await reflowOneText(segment.text, controller.signal, (state.spellFixes || []).filter((fix) => fix.targetId === segment.id));
         if (result.changed) {
           segment.text = result.text;
           changed += 1;
@@ -3873,39 +4000,27 @@ async function runReflow(panel) {
       }
       rebuildTranscriptDraftFromSegments();
       reanchorSpellFixes();
-      if (changed) {
-        refs.reflowUndo = { panel, before, afterFingerprint: transcriptReflowFingerprint() };
-        const extra = rejected ? ` (บางท่อนคงเดิมเพราะผลจัดหน้าไม่ผ่านการตรวจ)` : "";
-        state.message = formatGeminiSuccessMessage(`จัดหน้าแล้ว กดจัดหน้าอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม${extra}`);
-      } else if (lastError && !changed) {
-        handleGeminiError(lastError, "จัดหน้าไม่สำเร็จ จึงใช้ข้อความเดิม");
-      } else {
-        state.message = rejected
-          ? "ผลจัดหน้าเปลี่ยนคำ จึงใช้ข้อความเดิม"
-          : "ข้อความจัดหน้าอยู่แล้ว ไม่ต้องเปลี่ยน";
-      }
+      finishReflowAttempt(panel, before, {
+        changed: changed > 0,
+        rejected: changed === 0 && rejected > 0,
+        error: lastError,
+        reason: changed ? "ok" : (rejected ? "rejected" : "unchanged"),
+      });
     } else {
-      const result = await reflowOneText(getTranscriptEditorText(), controller.signal);
+      const result = await reflowOneText(getTranscriptEditorText(), controller.signal, state.spellFixes || []);
       throwIfCancelled(controller.signal);
       if (result.changed) {
         state.transcriptDraft = result.text;
         state.turns = [];
         reanchorSpellFixes();
-        refs.reflowUndo = { panel, before, afterFingerprint: transcriptReflowFingerprint() };
-        state.message = formatGeminiSuccessMessage("จัดหน้าแล้ว กดจัดหน้าอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม");
-      } else if (result.error) {
-        handleGeminiError(result.error, "จัดหน้าไม่สำเร็จ จึงใช้ข้อความเดิม");
-      } else {
-        state.message = result.reason === "rejected"
-          ? "ผลจัดหน้าเปลี่ยนคำ จึงใช้ข้อความเดิม"
-          : "ข้อความจัดหน้าอยู่แล้ว ไม่ต้องเปลี่ยน";
       }
+      finishReflowAttempt(panel, before, result);
     }
   } catch (error) {
     if (isCancelError(error)) {
-      state.message = "หยุดการจัดหน้าแล้ว";
+      state.message = reflowFailureMessage(error, { rejected: false });
     } else {
-      handleGeminiError(error, "จัดหน้าไม่สำเร็จ");
+      state.message = reflowFailureMessage(error);
     }
   } finally {
     finishCancelableTask(controller);
@@ -3923,7 +4038,7 @@ function isControlDisabled(name) {
     || (busy === "reviewing-speakers" && name === "review-speakers")
     || (busy === SPELL_BUSY && name === "spellcheck")
     || (busy === "recording" && name === "stop-recording")
-    || (busy === "reflowing" && name === (refs.reflowPanel === "summary" ? "reflow-summary" : "reflow-transcript"))
+    || (busy === "reflowing" && name === "reflow-transcript")
   );
   if (isCancelButton) return false;
 
@@ -3953,11 +4068,11 @@ function isControlDisabled(name) {
       return !hasTranscriptContent();
     case "reflow-transcript":
       return blocked || !hasTranscriptContent();
+    case "reflow-transcript-auto":
+      return blocked;
     case "copy-summary":
     case "download-summary":
       return !String(state.summary || "").trim();
-    case "reflow-summary":
-      return blocked || !String(state.summary || "").trim();
     case "play-audio":
     case "download-audio":
     case "audio-seek":
@@ -4137,6 +4252,7 @@ async function runSpellcheck(options = {}) {
     : jobs;
   await runSpellJobs(jobs, { replaceFixes: false });
   markSpellTargetsChecked(jobs.filter((job) => job.status === "ok").map((job) => job.targetId));
+  if (!refs.cancelRequested) await maybeAutoReflow();
 }
 
 async function retryFailedSpellChunks() {
@@ -4153,6 +4269,7 @@ async function retryFailedSpellChunks() {
   state.spellFixes = (state.spellFixes || []).filter((fix) => !failed.some((job) => String(fix.id).startsWith(`${job.id}-`)));
   await runSpellJobs(failed, { replaceFixes: false });
   markSpellTargetsChecked(failed.filter((job) => job.status === "ok").map((job) => job.targetId));
+  if (!refs.cancelRequested) await maybeAutoReflow();
 }
 
 function resolveSpellFixTarget(fix) {
@@ -4163,6 +4280,34 @@ function resolveSpellFixTarget(fix) {
     return { targetId: fix.targetId, type: "turn", turnIndex: Number(String(fix.targetId).slice(5)) };
   }
   return { targetId: "draft", type: "draft" };
+}
+
+
+function syncReflowUndoAfterSpellToggle(fix, nextReverted) {
+  const undo = refs.reflowUndo;
+  if (!undo || undo.panel !== "transcript" || !undo.before) return;
+  const priorFix = { ...fix, reverted: !nextReverted };
+  const applyTo = (text) => {
+    const result = toggleFixInText(String(text || ""), priorFix);
+    return result.found ? result.text : text;
+  };
+  if (undo.before.kind === "segments") {
+    if (Array.isArray(undo.before.segments)) {
+      undo.before.segments = undo.before.segments.map((item) => {
+        if (fix.targetId && item.id !== fix.targetId && fix.targetId !== "draft") return item;
+        return { ...item, text: applyTo(item.text) };
+      });
+    }
+    if (typeof undo.before.draft === "string") undo.before.draft = applyTo(undo.before.draft);
+  } else if (typeof undo.before.draft === "string") {
+    undo.before.draft = applyTo(undo.before.draft);
+  }
+  if (Array.isArray(undo.before.spellFixes)) {
+    undo.before.spellFixes = undo.before.spellFixes.map((item) => (
+      item.id === fix.id ? { ...item, reverted: nextReverted } : item
+    ));
+  }
+  undo.afterFingerprint = transcriptReflowFingerprint();
 }
 
 function revertSpellFix(fixId) {
@@ -4198,6 +4343,7 @@ function revertSpellFix(fixId) {
     fix.end = applied.end;
   }
   reanchorSpellFixes();
+  syncReflowUndoAfterSpellToggle(fix, applied.reverted);
   render();
   return true;
 }
@@ -4496,7 +4642,7 @@ function renderPrivacyModal() {
           </div>
           <div>
             <span>เพื่อความโปร่งใส แอปพลิเคชันนี้เปิดเผย source code เพื่อให้ตรวจสอบการทำงาน: <a href="https://github.com/nitilink/OmKwam" target="_blank" rel="noopener noreferrer">github.com/nitilink/OmKwam</a></span>
-            <span class="privacy-meta">Version: v0.39 · Last updated: 10 Nov 2026, 23:55 ICT</span>
+            <span class="privacy-meta">Version: v0.39 · Last updated: 11 Nov 2026, 13:56 ICT</span>
           </div>
         </div>
       </section>
@@ -4923,7 +5069,7 @@ function renderWorkTab() {
         <div class="turn-list">${turnHtml}</div>
         <div class="button-row bottom-actions mini-actions">
           <button class="ghost-button" id="copy-transcript" type="button" ${disabledAttr("copy-transcript")}>${state.copyTranscriptOk ? "คัดลอกแล้ว" : "คัดลอก"}</button>
-          <button class="ghost-button" id="reflow-transcript" type="button" ${disabledAttr("reflow-transcript")} ${state.busy === "reflowing" && refs.reflowPanel === "transcript" ? 'aria-busy="true" title="กดเพื่อยกเลิก"' : (canUndoReflow("transcript") ? 'title="กดอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม"' : 'title="จัดระเบียบการขึ้นบรรทัดโดยไม่เปลี่ยนคำ"')}>จัดหน้า</button>
+          ${renderReflowControl("transcript")}
           <button class="ghost-button" id="download-transcript" type="button" ${disabledAttr("download-transcript")}>ดาวน์โหลด .txt</button>
           <button class="ghost-button" id="clear-transcript" type="button" ${disabledAttr("clear-transcript")}>${canUndoTranscriptClear ? "ยกเลิกล้างข้อความ" : "ล้างข้อความ"}</button>
         </div>
@@ -4941,7 +5087,6 @@ function renderWorkTab() {
         <div id="summary-text" class="summary-output ${state.summary.trim() ? "" : "is-empty"}" contenteditable="plaintext-only" spellcheck="false" data-placeholder="ผลลัพธ์การสรุปความจะแสดงที่นี่">${renderSummaryText()}</div>
         <div class="button-row bottom-actions mini-actions">
           <button class="ghost-button" id="copy-summary" type="button" ${disabledAttr("copy-summary")}>${state.copyOk ? "คัดลอกแล้ว" : "คัดลอก"}</button>
-          <button class="ghost-button" id="reflow-summary" type="button" ${disabledAttr("reflow-summary")} ${state.busy === "reflowing" && refs.reflowPanel === "summary" ? 'aria-busy="true" title="กดเพื่อยกเลิก"' : (canUndoReflow("summary") ? 'title="กดอีกครั้งหรือ Ctrl+Z เพื่อกลับเป็นข้อความเดิม"' : 'title="จัดระเบียบการขึ้นบรรทัดโดยไม่เปลี่ยนคำ"')}>จัดหน้า</button>
           <button class="ghost-button" id="download-summary" type="button" ${disabledAttr("download-summary")}>ดาวน์โหลด .txt</button>
           <button class="ghost-button" id="clear-summary" type="button" ${disabledAttr("clear-summary")}>${canUndoSummaryClear ? "ยกเลิกล้างข้อความ" : "ล้างข้อความ"}</button>
         </div>
@@ -5150,6 +5295,7 @@ function bindEvents() {
       rebuildTranscriptDraftFromSegments();
       pruneSpellFixesFromCurrentText();
       refreshTranscriptActionButtons();
+      refreshReflowControlLabels();
     });
     element.addEventListener("paste", (event) => {
       event.preventDefault();
@@ -5520,7 +5666,13 @@ function bindEvents() {
     });
   });
   document.querySelector("#reflow-transcript")?.addEventListener("click", () => {
-    runReflow("transcript");
+    toggleReflow("transcript");
+  });
+  document.querySelector("#reflow-transcript-auto")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAutoReflow(!isAutoReflowOn());
+    render();
   });
   document.querySelector("#copy-transcript")?.addEventListener("click", async () => {
     syncFormState();
@@ -5552,6 +5704,7 @@ function bindEvents() {
       clearSpellState();
       state.issueNotice = null;
       state.copyTranscriptOk = false;
+      clearReflowUndo("transcript");
     } else if (hasClearedTranscript()) {
       state.turns = cloneStateValue(state.clearedTranscript.turns) || [];
       state.transcriptDraft = state.clearedTranscript.transcriptDraft || "";
@@ -5564,13 +5717,11 @@ function bindEvents() {
   document.querySelector("#summary-text")?.addEventListener("input", (event) => {
     const nextSummary = event.target.innerText;
     state.summary = nextSummary;
-    clearReflowUndo("summary");
     if (state.issueNotice?.source === "summary" && !state.summary.includes(state.issueNotice.word)) state.issueNotice = null;
     const hasText = Boolean(state.summary.trim());
     event.target.classList.toggle("is-empty", !hasText);
     document.querySelector("#copy-summary")?.toggleAttribute("disabled", !hasText);
     document.querySelector("#download-summary")?.toggleAttribute("disabled", !hasText);
-    document.querySelector("#reflow-summary")?.toggleAttribute("disabled", isControlDisabled("reflow-summary"));
     const clearSummary = document.querySelector("#clear-summary");
     if (clearSummary) {
       const canUndo = hasClearedSummary();
@@ -5645,9 +5796,6 @@ function bindEvents() {
       : `เปลี่ยน Gemini model เป็น ${getModelLabel(state.model)} แล้ว`;
     render();
     retryQuotaNoticeTask(retryAction);
-  });
-  document.querySelector("#reflow-summary")?.addEventListener("click", () => {
-    runReflow("summary");
   });
   document.querySelector("#copy-summary")?.addEventListener("click", async () => {
     syncFormState();
@@ -5762,11 +5910,6 @@ function bindEvents() {
 
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && String(event.key || "").toLowerCase() === "z" && !event.shiftKey && !event.altKey) {
-    if (canUndoReflow("summary")) {
-      event.preventDefault();
-      undoReflow("summary");
-      return;
-    }
     if (canUndoReflow("transcript")) {
       event.preventDefault();
       undoReflow("transcript");
